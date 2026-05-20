@@ -1,0 +1,31 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg-hero: #09090c;
+  --bg-tracker: #0e0e11;
+  --bg-alt: #0c0c10;
+  --gold: #c9a96e;
+  --green: #8ecf8e;
+  --yellow: #e8c76a;
+  --red: #e87c7c;
+  --border: #1e1e23;
+  --font-display: 'Playfair Display', serif;
+  --font-body: 'Outfit', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background-color: var(--bg-hero);
+  color: #e8e8e8;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
