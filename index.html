@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Amex Platinum Benefits Coach — Stop Leaving Money on the Table</title>
+  <meta name="description" content="Your $895 card has $3,800 in benefits. Track every credit, get enrollment guides, avoid pitfalls, and receive monthly reports.">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Outfit', system-ui, sans-serif; background: #09090c; color: #e8e8e8; min-height: 100vh; overflow-x: hidden; }
+    a { color: #c9a96e; }
+
+    .container { max-width: 900px; margin: 0 auto; padding: 0 20px; }
+    .container-sm { max-width: 700px; margin: 0 auto; padding: 0 20px; }
+    .container-xs { max-width: 600px; margin: 0 auto; padding: 0 20px; }
+
+    .gold { color: #c9a96e; }
+    .serif { font-family: 'Playfair Display', serif; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    .chip { width: 44px; height: 30px; border-radius: 5px; background: linear-gradient(135deg,#c9a96e,#e8d5a8,#c9a96e); margin: 0 auto 28px; box-shadow: 0 4px 20px rgba(201,169,110,.2); }
+
+    /* Hero */
+    .hero { position: relative; padding: 60px 20px 70px; text-align: center; }
+    .hero-glow { position: absolute; top: -80px; left: 50%; transform: translateX(-50%); width: 600px; height: 400px; background: radial-gradient(ellipse, rgba(201,169,110,.06) 0%, transparent 70%); pointer-events: none; }
+    .hero h1 { font-family: 'Playfair Display', serif; font-size: 48px; font-weight: 700; line-height: 1.15; margin-bottom: 20px; color: #fff; max-width: 700px; margin-left: auto; margin-right: auto; letter-spacing: -1px; }
+    .hero p.subtitle { font-size: 17px; color: #999; line-height: 1.7; max-width: 520px; margin: 0 auto 36px; font-weight: 300; }
+
+    /* Form */
+    .email-form { display: flex; gap: 8px; max-width: 440px; margin: 0 auto 16px; flex-wrap: wrap; justify-content: center; }
+    .email-input { flex: 1; min-width: 200px; background: #141418; border: 1px solid #2a2a30; border-radius: 10px; color: #e8e8e8; padding: 14px 18px; font-size: 15px; font-family: inherit; outline: none; }
+    .email-input:focus { border-color: #c9a96e; }
+    .email-btn { background: linear-gradient(135deg,#c9a96e,#a8893a); color: #111; border: none; border-radius: 10px; padding: 14px 28px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
+    .email-btn:hover { opacity: 0.9; }
+    .email-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .form-error { font-size: 12px; color: #e87c7c; margin-bottom: 8px; text-align: center; }
+    .form-fine { font-size: 12px; color: #444; text-align: center; }
+    .success-box { background: rgba(201,169,110,.08); border: 1px solid rgba(201,169,110,.2); border-radius: 10px; padding: 16px 24px; width: 100%; text-align: center; }
+    .success-box h3 { font-size: 16px; font-weight: 600; color: #c9a96e; margin-bottom: 4px; }
+    .success-box p { font-size: 13px; color: #999; }
+    .hidden { display: none !important; }
+
+    /* Social proof */
+    .proof-bar { border-top: 1px solid #1a1a1f; border-bottom: 1px solid #1a1a1f; padding: 20px; background: #0c0c10; }
+    .proof-grid { display: flex; justify-content: center; gap: 40px; flex-wrap: wrap; max-width: 700px; margin: 0 auto; }
+    .proof-item { text-align: center; }
+    .proof-val { font-size: 24px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: #c9a96e; }
+    .proof-label { font-size: 11px; color: #666; margin-top: 3px; }
+
+    /* Sections */
+    .section { padding: 70px 20px; }
+    .section-label { font-size: 11px; color: #c9a96e; text-transform: uppercase; letter-spacing: 2px; font-weight: 600; margin-bottom: 12px; }
+    .section h2 { font-family: 'Playfair Display', serif; font-size: 32px; font-weight: 600; line-height: 1.3; margin-bottom: 20px; color: #fff; }
+    .section p.desc { font-size: 15px; color: #999; line-height: 1.8; margin-bottom: 24px; }
+
+    /* Period cards */
+    .period-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+    .period-card { background: #111114; border-radius: 10px; padding: 16px; border: 1px solid #1a1a1f; }
+    .period-card h4 { font-size: 13px; font-weight: 600; color: #c9a96e; margin-bottom: 6px; }
+    .period-card p { font-size: 12px; color: #888; line-height: 1.5; }
+
+    /* Tracker preview */
+    .preview-box { background: #111114; border-radius: 14px; border: 1px solid #1e1e23; overflow: hidden; }
+    .preview-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid #1a1a1f; }
+    .preview-chip { width: 26px; height: 17px; border-radius: 3px; background: linear-gradient(135deg,#c9a96e,#e8d5a8,#c9a96e); }
+    .preview-badge { border-radius: 5px; padding: 4px 8px; font-size: 9px; font-weight: 600; }
+    .preview-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 4px; padding: 8px 8px 4px; }
+    .preview-stat { background: #0c0c10; border-radius: 6px; padding: 8px; }
+    .preview-stat-label { font-size: 7px; color: #555; text-transform: uppercase; }
+    .preview-stat-val { font-size: 13px; font-weight: 700; font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
+    .preview-benefit { background: #0c0c10; border-radius: 6px; padding: 8px 10px; margin-bottom: 3px; display: flex; align-items: center; gap: 6px; }
+    .preview-dot { width: 5px; height: 5px; border-radius: 3px; flex-shrink: 0; }
+    .preview-bar { height: 2px; background: #1a1a1f; border-radius: 1px; margin-top: 3px; }
+    .preview-fill { height: 100%; border-radius: 1px; }
+
+    /* Features */
+    .feature { display: flex; gap: 16px; margin-bottom: 32px; align-items: flex-start; }
+    .feature-num { width: 36px; height: 36px; border-radius: 18px; background: rgba(201,169,110,.08); border: 1px solid rgba(201,169,110,.15); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 14px; font-weight: 700; color: #c9a96e; font-family: 'JetBrains Mono', monospace; }
+    .feature h3 { font-size: 17px; font-weight: 600; color: #f0f0f0; margin-bottom: 6px; }
+    .feature p { font-size: 14px; color: #999; line-height: 1.7; margin-bottom: 8px; }
+    .feature-quote { font-size: 12px; color: #c9a96e; line-height: 1.5; background: rgba(201,169,110,.04); border-left: 2px solid rgba(201,169,110,.2); padding: 8px 12px; border-radius: 0 6px 6px 0; }
+
+    /* How it works */
+    .how-section { background: #0c0c10; border-top: 1px solid #1a1a1f; border-bottom: 1px solid #1a1a1f; }
+    .how-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+    .how-step { text-align: center; padding: 24px 16px; }
+    .how-num { width: 48px; height: 48px; border-radius: 24px; background: rgba(201,169,110,.06); border: 1px solid rgba(201,169,110,.12); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; font-size: 20px; font-weight: 700; color: #c9a96e; font-family: 'JetBrains Mono', monospace; }
+    .how-step h3 { font-size: 16px; font-weight: 600; color: #f0f0f0; margin-bottom: 8px; }
+    .how-step p { font-size: 13px; color: #888; line-height: 1.6; }
+
+    /* Comparison table */
+    .comp-table { background: #111114; border-radius: 12px; border: 1px solid #1e1e23; overflow: hidden; }
+    .comp-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; }
+    .comp-cell { padding: 10px 14px; font-size: 12px; border-bottom: 1px solid #1a1a1f; }
+    .comp-header { font-size: 11px; font-weight: 500; color: #888; padding: 12px 14px; border-bottom: 1px solid #1e1e23; }
+    .comp-us { background: rgba(201,169,110,.04); }
+    .comp-yes { color: #8ecf8e; text-align: center; font-size: 13px; }
+    .comp-no { color: #e87c7c; text-align: center; font-size: 13px; }
+
+    /* Quote */
+    .quote-section { padding: 60px 20px; background: #0c0c10; border-top: 1px solid #1a1a1f; border-bottom: 1px solid #1a1a1f; text-align: center; }
+    .quote-mark { font-size: 40px; color: #c9a96e; font-family: 'Playfair Display', serif; margin-bottom: 16px; opacity: 0.4; }
+    .quote-text { font-size: 18px; color: #ccc; line-height: 1.7; font-family: 'Playfair Display', serif; font-style: italic; margin-bottom: 20px; max-width: 540px; margin-left: auto; margin-right: auto; }
+    .quote-attr { font-size: 12px; color: #666; }
+
+    /* FAQ */
+    .faq-item { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #1a1a1f; }
+    .faq-item:last-child { border-bottom: none; }
+    .faq-item h3 { font-size: 15px; font-weight: 600; color: #e8e8e8; margin-bottom: 8px; }
+    .faq-item p { font-size: 13px; color: #888; line-height: 1.7; }
+
+    /* CTA */
+    .cta-section { padding: 70px 20px 80px; text-align: center; background: linear-gradient(180deg, #09090c 0%, #0f0f14 100%); border-top: 1px solid #1a1a1f; }
+
+    /* Footer */
+    .footer { padding: 24px 20px; border-top: 1px solid #1a1a1f; text-align: center; font-size: 11px; color: #444; }
+
+    @media (max-width: 600px) {
+      .hero h1 { font-size: 32px; }
+      .section h2 { font-size: 26px; }
+      .proof-grid { gap: 20px; }
+      .comp-row { grid-template-columns: 2fr 1fr 1fr 1fr; }
+      .comp-cell, .comp-header { padding: 8px 8px; font-size: 10px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HERO -->
+  <div class="hero container">
+    <div class="hero-glow"></div>
+    <div class="chip"></div>
+    <h1>
+      Your $895 card has $3,800 in benefits.
+      <br><span class="gold">Are you using them all?</span>
+    </h1>
+    <p class="subtitle">The average Platinum Card holder leaves over $1,200 on the table every year. We tell you exactly which benefits to activate, warn you before credits expire, and prove whether your card is worth keeping.</p>
+
+    <div id="hero-form" class="email-form">
+      <input type="email" id="hero-email" class="email-input" placeholder="Enter your email">
+      <button onclick="handleSignup('hero')" class="email-btn" id="hero-btn">Get Free Access</button>
+    </div>
+    <div id="hero-success" class="success-box hidden">
+      <h3>You're in!</h3>
+      <p>Check your inbox for your welcome email. We'll send your first monthly report on the 1st.</p>
+    </div>
+    <div id="hero-error" class="form-error hidden"></div>
+    <p class="form-fine">Free forever. No credit card needed. Unsubscribe anytime.</p>
+  </div>
+
+  <!-- SOCIAL PROOF -->
+  <div class="proof-bar">
+    <div class="proof-grid">
+      <div class="proof-item"><div class="proof-val">$3,800+</div><div class="proof-label">in trackable benefits</div></div>
+      <div class="proof-item"><div class="proof-val">20+</div><div class="proof-label">credits & perks covered</div></div>
+      <div class="proof-item"><div class="proof-val">35</div><div class="proof-label">pitfalls we warn you about</div></div>
+      <div class="proof-item"><div class="proof-val">Monthly</div><div class="proof-label">email digests</div></div>
+    </div>
+  </div>
+
+  <!-- THE PROBLEM -->
+  <div class="section container-sm">
+    <div class="section-label">The Problem</div>
+    <h2 class="serif">Premium cards have become impossibly complicated</h2>
+    <p class="desc">Your Amex Platinum has monthly Uber Cash that expires at midnight. Quarterly dining credits that don't roll over. Semi-annual hotel credits with specific booking requirements. Annual airline fees that only cover incidentals. Each one requires separate enrollment, has its own exclusions, and resets on different schedules.</p>
+    <div class="period-grid">
+      <div class="period-card"><h4>Monthly</h4><p>Uber Cash, streaming, Walmart+ — use it or lose it by month-end</p></div>
+      <div class="period-card"><h4>Quarterly</h4><p>Resy dining, lululemon — $175/quarter vanishes if unused</p></div>
+      <div class="period-card"><h4>Semi-annually</h4><p>Hotel credits — $300 per half, different rules than annual</p></div>
+      <div class="period-card"><h4>Annually</h4><p>Airline fees, Equinox, Oura, CLEAR — easy to forget until December</p></div>
+    </div>
+  </div>
+
+  <!-- TRACKER PREVIEW -->
+  <div class="section container-sm" style="padding-top: 0;">
+    <div class="section-label">Live Preview</div>
+    <h2 class="serif" style="margin-bottom: 24px;">See exactly where you stand</h2>
+    <div class="preview-box">
+      <div class="preview-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="preview-chip"></div>
+          <div><div style="font-size:13px; font-weight:700; color:#f0f0f0;">Amex Platinum</div><div style="font-size:8px; color:#666;">Benefits Coach</div></div>
+        </div>
+        <div style="display:flex; gap:4px;">
+          <div class="preview-badge" style="background:rgba(142,207,142,.1); color:#8ecf8e;">KEEP</div>
+          <div class="preview-badge" style="background:rgba(201,169,110,.1); color:#c9a96e;">Report</div>
+        </div>
+      </div>
+      <div class="preview-stats">
+        <div class="preview-stat"><div class="preview-stat-label">Annual Value</div><div class="preview-stat-val" style="color:#8ecf8e;">~$3,829</div></div>
+        <div class="preview-stat"><div class="preview-stat-label">Period Used</div><div class="preview-stat-val" style="color:#c9a96e;">$476/$928</div></div>
+        <div class="preview-stat"><div class="preview-stat-label">Enrolled</div><div class="preview-stat-val" style="color:#e8c76a;">18/20</div></div>
+      </div>
+      <div style="padding: 4px 8px 8px;" id="preview-benefits"></div>
+    </div>
+    <p style="font-size:11px; color:#555; text-align:center; margin-top:10px;">Interactive preview — your real tracker updates as you use your benefits</p>
+  </div>
+
+  <!-- FEATURES -->
+  <div class="section container-sm">
+    <div class="section-label">What Makes Us Different</div>
+    <h2 class="serif" style="margin-bottom: 32px;">Not just a tracker. A coach.</h2>
+
+    <div class="feature">
+      <div class="feature-num">1</div>
+      <div>
+        <h3>Step-by-step enrollment guides</h3>
+        <p>Every benefit has numbered instructions pulled from the actual card agreement. We tell you exactly where to click, what to toggle, and what to set as your payment method.</p>
+        <div class="feature-quote">"Toggle Uber Cash OFF for membership fees so your Amex is charged directly" — the kind of detail that costs you $120 if you miss it.</div>
+      </div>
+    </div>
+
+    <div class="feature">
+      <div class="feature-num">2</div>
+      <div>
+        <h3>Pitfall warnings from the fine print</h3>
+        <p>We surface the gotchas that cause people to miss credits. Each benefit lists the specific exclusions, timing traps, and enrollment requirements that the card agreement buries in 42 pages of legalese.</p>
+        <div class="feature-quote">"If you're on an annual Walmart+ plan, you must switch to monthly BEFORE your renewal date or you'll get zero credits for a full year."</div>
+      </div>
+    </div>
+
+    <div class="feature">
+      <div class="feature-num">3</div>
+      <div>
+        <h3>Monthly email digests</h3>
+        <p>On the 1st of every month, you get a report showing credits used, money left on the table, benefits about to expire, and anything you haven't enrolled in yet.</p>
+        <div class="feature-quote">The nudge that turns a forgotten $25 streaming credit into $300/year in savings.</div>
+      </div>
+    </div>
+
+    <div class="feature">
+      <div class="feature-num">4</div>
+      <div>
+        <h3>Live keep-or-cancel analysis</h3>
+        <p>A real-time ROI calculator that compares your actual redeemed value against the $895 annual fee. It projects your annual return at current pace and gives you a clear verdict.</p>
+        <div class="feature-quote">Know exactly whether your card is paying for itself — not a guess, a number.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HOW IT WORKS -->
+  <div class="how-section section">
+    <div class="container-sm" style="text-align: center;">
+      <div class="section-label">How It Works</div>
+      <h2 class="serif" style="margin-bottom: 40px;">Three minutes to set up. Saves you thousands.</h2>
+      <div class="how-grid">
+        <div class="how-step"><div class="how-num">1</div><h3>Enter your email</h3><p>Get instant access to your personalized tracker with every Amex Platinum benefit pre-loaded and organized.</p></div>
+        <div class="how-step"><div class="how-num">2</div><h3>Mark what you've enrolled in</h3><p>Go through each benefit and mark your enrollment status. We show you exactly how to activate any you've missed.</p></div>
+        <div class="how-step"><div class="how-num">3</div><h3>Track as you go</h3><p>Log credits as you use them. We handle the math, the projections, the deadlines, and the monthly reminders.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPARISON -->
+  <div class="section container-sm">
+    <div class="section-label">Why Not Just Use An App?</div>
+    <h2 class="serif">Other tools tell you what card to swipe. We tell you what you're missing.</h2>
+    <p class="desc">Apps like CardPointers and MaxRewards are great at recommending the best card at checkout. But they treat benefit tracking as a checkbox. We treat it as coaching — with the enrollment steps, the fine-print pitfalls, and the monthly accountability that actually gets you to use every credit.</p>
+    <div class="comp-table">
+      <div class="comp-row">
+        <div class="comp-header"></div>
+        <div class="comp-header comp-us" style="font-weight:700; color:#c9a96e;">Us</div>
+        <div class="comp-header">CardPointers</div>
+        <div class="comp-header">MaxRewards</div>
+      </div>
+      <div class="comp-row"><div class="comp-cell" style="color:#bbb;">Step-by-step enrollment guides</div><div class="comp-cell comp-us comp-yes">+</div><div class="comp-cell comp-no">-</div><div class="comp-cell comp-no">-</div></div>
+      <div class="comp-row"><div class="comp-cell" style="color:#bbb;">Fine-print pitfall warnings</div><div class="comp-cell comp-us comp-yes">+</div><div class="comp-cell comp-no">-</div><div class="comp-cell comp-no">-</div></div>
+      <div class="comp-row"><div class="comp-cell" style="color:#bbb;">Monthly email reports</div><div class="comp-cell comp-us comp-yes">+</div><div class="comp-cell comp-no">-</div><div class="comp-cell comp-yes">+</div></div>
+      <div class="comp-row"><div class="comp-cell" style="color:#bbb;">Keep-or-cancel analysis</div><div class="comp-cell comp-us comp-yes">+</div><div class="comp-cell comp-no">-</div><div class="comp-cell comp-no">-</div></div>
+      <div class="comp-row"><div class="comp-cell" style="color:#bbb;">Pre-loaded benefit details</div><div class="comp-cell comp-us comp-yes">+</div><div class="comp-cell comp-yes">+</div><div class="comp-cell comp-yes">+</div></div>
+      <div class="comp-row"><div class="comp-cell" style="color:#bbb;">Free tier</div><div class="comp-cell comp-us comp-yes">+</div><div class="comp-cell comp-yes">+</div><div class="comp-cell comp-no">-</div></div>
+      <div class="comp-row" style="border-bottom:none;"><div class="comp-cell" style="color:#bbb; border-bottom:none;">No bank login required</div><div class="comp-cell comp-us comp-yes" style="border-bottom:none;">+</div><div class="comp-cell comp-yes" style="border-bottom:none;">+</div><div class="comp-cell comp-no" style="border-bottom:none;">-</div></div>
+    </div>
+    <p style="font-size:11px; color:#444; margin-top:8px;">Comparison based on publicly available feature sets as of May 2026.</p>
+  </div>
+
+  <!-- QUOTE -->
+  <div class="quote-section">
+    <div class="quote-mark">"</div>
+    <p class="quote-text">It's wild that you practically need a spreadsheet to come out ahead on an $800-plus credit card. But that's where we are.</p>
+    <div class="quote-attr">Kyle Potter, Executive Editor, Thrifty Traveler</div>
+  </div>
+
+  <!-- FAQ -->
+  <div class="section container-xs">
+    <h2 class="serif" style="text-align:center; margin-bottom:28px;">Questions</h2>
+    <div class="faq-item"><h3>Is this really free?</h3><p>Yes. The tracker and monthly email reports are completely free. We plan to add premium features for multi-card tracking in the future, but the Amex Platinum coach will remain free.</p></div>
+    <div class="faq-item"><h3>Do I need to link my bank account?</h3><p>No. We never ask for your card number, login credentials, or any financial data. You just tell us which benefits you've enrolled in and log your usage manually.</p></div>
+    <div class="faq-item"><h3>How do the monthly emails work?</h3><p>On the 1st of every month, we send you a digest showing which credits you've used, what's about to expire, anything you haven't enrolled in, and whether your card is paying for itself.</p></div>
+    <div class="faq-item"><h3>Is this affiliated with American Express?</h3><p>No. This is an independent tool. We analyze the publicly available card member agreement to provide accurate benefit information, but we have no relationship with American Express.</p></div>
+    <div class="faq-item"><h3>Can I track other cards?</h3><p>Not yet — we're perfecting the Amex Platinum experience first. Chase Sapphire Reserve, Capital One Venture X, and Amex Gold are coming next.</p></div>
+  </div>
+
+  <!-- FINAL CTA -->
+  <div class="cta-section">
+    <div style="max-width:500px; margin:0 auto;">
+      <div class="chip" style="box-shadow: 0 4px 24px rgba(201,169,110,.15);"></div>
+      <h2 class="serif" style="font-size:32px; font-weight:700; line-height:1.2; margin-bottom:16px; color:#fff;">Stop leaving money on the table.</h2>
+      <p style="font-size:15px; color:#888; line-height:1.7; margin-bottom:28px;">Join for free and start maximizing your Amex Platinum benefits today.</p>
+
+      <div id="bottom-form" class="email-form">
+        <input type="email" id="bottom-email" class="email-input" placeholder="Enter your email">
+        <button onclick="handleSignup('bottom')" class="email-btn" id="bottom-btn">Get Free Access</button>
+      </div>
+      <div id="bottom-success" class="success-box hidden">
+        <h3>You're in!</h3>
+        <p>Check your inbox for your welcome email.</p>
+      </div>
+      <div id="bottom-error" class="form-error hidden"></div>
+      <p class="form-fine">Free forever. No credit card needed.</p>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    Not affiliated with American Express. Built by people who think $895 is a lot to pay for benefits you forget to use.
+  </div>
+
+  <script>
+    const API_URL = "https://amex-benefits-backend.onrender.com";
+
+    // Populate tracker preview
+    const benefits = [
+      { name: "Uber Cash", val: "$15/mo", used: 15, total: 15, pct: 100, color: "#8ecf8e" },
+      { name: "Digital Entertainment", val: "$25/mo", used: 18.99, total: 25, pct: 76, color: "#c9a96e" },
+      { name: "Resy Dining", val: "$100/qtr", used: 67, total: 100, pct: 67, color: "#c9a96e" },
+      { name: "Hotel Credit", val: "$300/half", used: 300, total: 300, pct: 100, color: "#8ecf8e" },
+      { name: "Airline Fee Credit", val: "$200/yr", used: 0, total: 200, pct: 0, color: "#e87c7c" },
+      { name: "lululemon", val: "$75/qtr", used: 75, total: 75, pct: 100, color: "#8ecf8e" },
+    ];
+
+    const previewEl = document.getElementById("preview-benefits");
+    benefits.forEach(function(b) {
+      previewEl.innerHTML += '<div class="preview-benefit">' +
+        '<div class="preview-dot" style="background:' + b.color + ';"></div>' +
+        '<div style="flex:1;">' +
+          '<div style="display:flex; justify-content:space-between; margin-bottom:3px;">' +
+            '<span style="font-size:10px; font-weight:600; color:#ddd;">' + b.name + '</span>' +
+            '<span style="font-size:9px; font-family:JetBrains Mono,monospace; color:#888;">$' + b.used + ' / ' + b.val + '</span>' +
+          '</div>' +
+          '<div class="preview-bar"><div class="preview-fill" style="width:' + b.pct + '%; background:' + (b.pct >= 100 ? '#8ecf8e' : b.pct > 0 ? '#c9a96e' : 'transparent') + ';"></div></div>' +
+        '</div>' +
+      '</div>';
+    });
+
+    // Form handling
+    async function handleSignup(location) {
+      var emailEl = document.getElementById(location + "-email");
+      var formEl = document.getElementById(location + "-form");
+      var successEl = document.getElementById(location + "-success");
+      var errorEl = document.getElementById(location + "-error");
+      var btnEl = document.getElementById(location + "-btn");
+
+      var email = emailEl.value.trim();
+
+      if (!email || email.indexOf("@") === -1 || email.indexOf(".") === -1) {
+        errorEl.textContent = "Please enter a valid email address";
+        errorEl.classList.remove("hidden");
+        return;
+      }
+
+      errorEl.classList.add("hidden");
+      btnEl.disabled = true;
+      btnEl.textContent = "Signing up...";
+
+      try {
+        var response = await fetch(API_URL + "/api/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email }),
+        });
+        var data = await response.json();
+
+        if (response.ok) {
+          formEl.classList.add("hidden");
+          successEl.classList.remove("hidden");
+
+          // Also update the other form
+          var other = location === "hero" ? "bottom" : "hero";
+          document.getElementById(other + "-form").classList.add("hidden");
+          document.getElementById(other + "-success").classList.remove("hidden");
+        } else {
+          errorEl.textContent = data.error || "Something went wrong. Please try again.";
+          errorEl.classList.remove("hidden");
+          btnEl.disabled = false;
+          btnEl.textContent = "Get Free Access";
+        }
+      } catch (err) {
+        errorEl.textContent = "Connecting to server... please try again in a moment.";
+        errorEl.classList.remove("hidden");
+        btnEl.disabled = false;
+        btnEl.textContent = "Get Free Access";
+      }
+    }
+
+    // Allow Enter key on both inputs
+    document.getElementById("hero-email").addEventListener("keydown", function(e) {
+      if (e.key === "Enter") handleSignup("hero");
+    });
+    document.getElementById("bottom-email").addEventListener("keydown", function(e) {
+      if (e.key === "Enter") handleSignup("bottom");
+    });
+  </script>
+</body>
+</html>
