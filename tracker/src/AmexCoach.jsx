@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 
-const SK = "amex-coach-v5";
+const MULTI_SK = "multi-card-tracker-v1";
+const OLD_SK = "amex-coach-v5";
 const SK_EMAIL = "amex-coach-email-v5";
 
 function getDaysUntilReset(p) {
@@ -26,7 +27,7 @@ function annualize(v, p) {
   return v * (map[p] || 1);
 }
 
-const BENEFITS = [
+const AMEX_BENEFITS = [
   { id: "uber-cash", name: "Uber Cash", cat: "Rideshare", value: 15, period: "Monthly",
     headline: "$15/mo in Uber Cash ($200/yr with Dec bonus)",
     howTo: ["Download/update Uber, Uber Eats, or Postmates app", "Add Platinum Card as payment in Uber account", "Toggle Uber Cash ON before ordering", "Select Amex as payment method", "Auto-loads by the 1st each month"],
@@ -143,8 +144,130 @@ const BENEFITS = [
     enrollReq: false, enrollAction: "Automatic" },
 ];
 
+const CSP_BENEFITS = [
+  { id: "csp-hotel", name: "Chase Travel Hotel Credit", cat: "Hotels", value: 50, period: "Annually",
+    headline: "$50/yr hotel credit when booking through Chase Travel",
+    howTo: ["Book a hotel through Chase Travel at chasetravel.com or call the number on the back of your card", "Pay with your Chase Sapphire Preferred card", "Credit is automatically applied — no enrollment needed", "Credit resets on your account anniversary date (not January 1)"],
+    pitfalls: ["Must book through Chase Travel — booking directly with hotel does NOT qualify", "Purchases qualifying for this credit do NOT earn points — credit OR points, not both", "Anniversary year means your account open date, not January 1 — check your open date", "FROSCH by Chase Travel bookings do NOT qualify for the hotel credit"],
+    tips: ["Even a one-night hotel stay through Chase Travel triggers the credit", "At $95 annual fee, this credit alone covers more than half the cost of the card", "Book in advance — the credit applies to the charge date, not the stay date"],
+    enrollReq: false, enrollAction: "Automatic — book through chasetravel.com" },
+  { id: "dashpass", name: "DashPass Membership", cat: "Dining", value: 120, period: "Annually",
+    headline: "Complimentary DashPass subscription (~$120 value/yr)",
+    howTo: ["Go to the DoorDash app or website", "Select DashPass and choose the free activation option for Chase cardholders", "Add your Chase Sapphire Preferred as payment method", "Activate your complimentary membership"],
+    pitfalls: ["Must activate through DoorDash — not automatic", "After the complimentary period, DashPass auto-renews at the standard rate if not cancelled", "Benefit is subject to change — check chase.com/sapphire for current terms"],
+    tips: ["DashPass gives free delivery and reduced service fees on $12+ orders", "If you order delivery even once a month, this easily covers the $95 annual fee alone", "Also works on Caviar orders"],
+    enrollReq: true, enrollAction: "Activate through DoorDash app with your CSP card" },
+  { id: "instacart-plus", name: "Instacart+ Membership", cat: "Grocery", value: 99, period: "Annually",
+    headline: "Complimentary Instacart+ membership (~$99 value/yr)",
+    howTo: ["Go to instacart.com or the Instacart app", "Look for the Chase cardholder benefit activation", "Add your Chase Sapphire Preferred as payment method", "Activate your complimentary membership"],
+    pitfalls: ["Must activate — not automatic", "Auto-renews at standard rate after complimentary period if not cancelled", "Benefit subject to change"],
+    tips: ["Free delivery on orders $35+ with Instacart+", "Combine with 3x points on online grocery purchases for maximum value", "Target, Walmart, and wholesale clubs excluded from 3x grocery but Instacart+ still applies"],
+    enrollReq: true, enrollAction: "Activate at instacart.com with your CSP card" },
+  { id: "csp-5x", name: "5x Points on Chase Travel", cat: "Travel", value: 0, period: "Annually",
+    headline: "5 points per $1 on flights, hotels, and travel booked through Chase Travel",
+    howTo: ["Book all travel at chasetravel.com or call Chase Travel", "Pay with your Chase Sapphire Preferred", "Points post at the close of your monthly billing cycle"],
+    pitfalls: ["Only applies to bookings through Chase Travel — direct bookings earn only 2x", "FROSCH by Chase Travel bookings do NOT qualify for 5x", "Purchases qualifying for the $50 hotel credit do NOT earn points"],
+    tips: ["Points are worth 1.25 cents each through Chase Travel — effectively 6.25% back on travel", "Transfer to airline and hotel partners (Hyatt, United, Southwest) for potentially higher value", "Always compare Chase Travel vs direct — sometimes direct rates are lower"],
+    enrollReq: false, enrollAction: "Automatic — book through chasetravel.com" },
+  { id: "csp-3x-dining", name: "3x Points on Dining", cat: "Dining", value: 0, period: "Annually",
+    headline: "3 points per $1 on restaurants, takeout, and eligible delivery",
+    howTo: ["Use your Chase Sapphire Preferred at any restaurant, takeout, or eligible delivery service", "Points post automatically at the end of your billing cycle"],
+    pitfalls: ["Some restaurant purchases through third-party payment apps may not code as dining", "Bars coded as 'drinking establishments' may earn 1x instead of 3x"],
+    tips: ["One of the best dining rewards rates at this price point", "Stacks with DashPass for delivery orders — 3x points plus free delivery", "Eligible delivery services include DoorDash, Grubhub, Uber Eats, and similar"],
+    enrollReq: false, enrollAction: "Automatic" },
+  { id: "csp-3x-streaming", name: "3x Points on Select Streaming", cat: "Streaming", value: 0, period: "Annually",
+    headline: "3 points per $1 on select streaming services",
+    howTo: ["Pay for eligible streaming services with your Chase Sapphire Preferred", "Points post automatically"],
+    pitfalls: ["Not all streaming services qualify — Chase defines 'select streaming'", "Purchases through third-party apps or bundles may not qualify"],
+    tips: ["Subscribe directly with the streaming service, not through Apple TV or Amazon channels", "Netflix, Hulu, Disney+, Spotify, and most major services qualify"],
+    enrollReq: false, enrollAction: "Automatic — pay subscriptions with your CSP" },
+  { id: "csp-3x-grocery", name: "3x Points on Online Grocery", cat: "Grocery", value: 0, period: "Annually",
+    headline: "3 points per $1 on online grocery purchases",
+    howTo: ["Shop online at qualifying grocery retailers", "Pay with your Chase Sapphire Preferred"],
+    pitfalls: ["Target, Walmart, and wholesale clubs (Costco, Sam's Club) are EXCLUDED", "Must be online grocery — in-store purchases earn only 1x", "Some grocery delivery apps may code differently — check your statement"],
+    tips: ["Instacart, Amazon Fresh, and most online grocery services qualify", "Combine with complimentary Instacart+ for maximum value — 3x points plus free delivery"],
+    enrollReq: false, enrollAction: "Automatic — shop online grocery with your CSP" },
+  { id: "csp-2x-travel", name: "2x Points on All Other Travel", cat: "Travel", value: 0, period: "Annually",
+    headline: "2 points per $1 on travel not booked through Chase Travel",
+    howTo: ["Pay for any travel purchases (flights, hotels, Uber, parking, tolls) with your CSP", "Points post automatically"],
+    pitfalls: ["Travel booked through Chase Travel earns 5x, not 2x", "FROSCH bookings earn 2x", "Rideshare (Uber, Lyft) typically codes as travel and earns 2x"],
+    tips: ["Gas stations sometimes code as travel — watch your statement", "Uber, Lyft, trains, taxis, parking meters, and tolls all typically earn 2x"],
+    enrollReq: false, enrollAction: "Automatic" },
+  { id: "anniversary-bonus", name: "10% Anniversary Points Bonus", cat: "Other", value: 0, period: "Annually",
+    headline: "Earn 10% of your total annual spend in bonus points each anniversary year",
+    howTo: ["Simply use your card throughout the year", "After your account anniversary, Chase calculates 10% of all points earned from purchases", "Bonus points post within 2-3 billing cycles after your anniversary date"],
+    pitfalls: ["Based on points earned from purchases only — not sign-up bonuses or transferred points", "Account must be open and not in default at time of fulfillment", "Allow 2-3 billing cycles for bonus points to post after anniversary"],
+    tips: ["$25,000 in annual spend (25,000 base points) earns a 2,500 point bonus", "Points are worth at least 1 cent each — effectively 10% more value on base spend", "Transfer to travel partners for potentially higher value per point"],
+    enrollReq: false, enrollAction: "Automatic — happens each anniversary year" },
+  { id: "rental-car", name: "Primary Rental Car Insurance", cat: "Insurance", value: 0, period: "Annually",
+    headline: "Primary rental car insurance — rare at this price point",
+    howTo: ["Decline the rental company's CDW/LDW coverage", "Pay for the entire rental with your Chase Sapphire Preferred", "File a claim through Chase if damage or theft occurs"],
+    pitfalls: ["Exotic, antique, and certain luxury vehicles may be excluded", "Rentals exceeding 31 consecutive days may not be covered"],
+    tips: ["Primary coverage means no filing with personal insurance first — no rate increase risk", "Saves $15-30/day vs buying the rental company's CDW", "One of the biggest underrated advantages of the CSP over other travel cards"],
+    enrollReq: false, enrollAction: "Decline CDW at rental counter and pay with CSP" },
+  { id: "trip-cancel", name: "Trip Cancellation Insurance", cat: "Insurance", value: 0, period: "Annually",
+    headline: "Up to $10,000/person for trip cancellation or interruption",
+    howTo: ["Pay for your trip with your Chase Sapphire Preferred", "If your trip is cancelled or interrupted for a covered reason, file a claim"],
+    pitfalls: ["Covered reasons are specific — check chase.com/sapphire for full list", "Pre-existing conditions may not be covered"],
+    tips: ["Covers up to $10,000 per person and $20,000 per trip", "Covered reasons include illness, severe weather, and other qualifying events", "Much broader than most travel insurance purchased separately"],
+    enrollReq: false, enrollAction: "Pay for trips with your CSP" },
+  { id: "csp-nofx", name: "No Foreign Transaction Fees", cat: "Travel", value: 0, period: "Annually",
+    headline: "Zero foreign transaction fees worldwide",
+    howTo: ["Use your Chase Sapphire Preferred internationally", "Automatic — no enrollment needed"],
+    pitfalls: ["ATMs and merchants may charge their own fees", "Always pay in local currency — never choose 'convert to USD' at merchants"],
+    tips: ["Saves the typical 3% fee most non-travel cards charge", "On a $5,000 international trip, that's $150 in savings"],
+    enrollReq: false, enrollAction: "Automatic" },
+  { id: "transfer-points", name: "Points Transfer to Travel Partners", cat: "Travel", value: 0, period: "Annually",
+    headline: "Transfer points 1:1 to 14 airline and hotel partners",
+    howTo: ["Log into chase.com/ultimaterewards", "Select 'Transfer Points' and choose your partner program", "Enter your partner loyalty number — it must match your name exactly", "Transfers process within one business day for most partners"],
+    pitfalls: ["Transfers are INSTANT and IRREVERSIBLE — cannot be cancelled or refunded", "Points must transfer in 1,000-point increments", "Loyalty account details must match exactly — name discrepancies cause failures"],
+    tips: ["Transferring to Hyatt is widely considered the best redemption — points worth 2+ cents each", "United, Southwest, British Airways, Air France/KLM are popular airline partners", "Wait until you have a specific redemption in mind before transferring — points lose flexibility once moved"],
+    enrollReq: false, enrollAction: "Automatic — transfer through chase.com/ultimaterewards" },
+];
+
+const CARD_CONFIGS = [
+  { id: "amex-platinum", name: "Amex Platinum", shortName: "Amex Plat", issuer: "American Express", annualFee: 895, accent: "#c9a96e", accentAlpha: "201,169,110", gradient: "linear-gradient(135deg,#c9a96e,#e8d5a8,#c9a96e)", benefits: AMEX_BENEFITS },
+  { id: "csp", name: "Chase Sapphire Preferred", shortName: "Chase CSP", issuer: "Chase", annualFee: 95, accent: "#4a7fc1", accentAlpha: "74,127,193", gradient: "linear-gradient(135deg,#0a1628,#4a7fc1,#1a3a6b)", benefits: CSP_BENEFITS },
+];
+
+const PERK_VALUES = {
+  "amex-platinum": { centurion: 150, pp: 100, dsc: 125, hilton: 300, marriott: 200, cell: 180, nofx: 100 },
+  "csp": { "rental-car": 180, "trip-cancel": 100, "transfer-points": 100, "csp-nofx": 50 },
+};
+
 function buildDefault() {
-  return { benefits: BENEFITS.map(b => ({ ...b, enrolled: false, usedAmount: 0, used: false })) };
+  return CARD_CONFIGS.map(c => ({
+    ...c,
+    benefits: c.benefits.map(b => ({ ...b, enrolled: false, usedAmount: 0, used: false }))
+  }));
+}
+
+function loadInitialCards() {
+  try {
+    const r = localStorage.getItem(MULTI_SK);
+    if (r) { const p = JSON.parse(r); if (Array.isArray(p) && p.length > 0) return p; }
+  } catch (e) {}
+  const cards = buildDefault();
+  try {
+    const old = localStorage.getItem(OLD_SK);
+    if (old) { const p = JSON.parse(old); if (p && p.benefits) cards[0].benefits = p.benefits; }
+  } catch (e) {}
+  return cards;
+}
+
+function cardVerdict(card) {
+  const credits = card.benefits.filter(b => b.value > 0);
+  const perks = card.benefits.filter(b => b.value === 0);
+  const pv = PERK_VALUES[card.id] || {};
+  const now = new Date();
+  const frac = (Math.floor((now - new Date(now.getFullYear(),0,1)) / 864e5) + 1) / 365;
+  const redeemed = credits.reduce((s,b) => s + (b.usedAmount||0), 0);
+  const perkVal = perks.reduce((s,b) => s + (b.used ? (pv[b.id]||0) : 0), 0);
+  const proj = Math.round(frac > 0 ? redeemed / frac : 0) + perkVal;
+  const pct = Math.min(100, Math.round((proj / card.annualFee) * 100));
+  if (pct >= 100) return { label: "KEEP", color: "#8ecf8e" };
+  if (pct >= 70) return { label: "CLOSE", color: "#e8c76a" };
+  return { label: "REVIEW", color: "#e87c7c" };
 }
 
 function MonthlyReport({ card, email, onClose }) {
@@ -158,16 +281,15 @@ function MonthlyReport({ card, email, onClose }) {
   const total = credits.reduce((s,b) => s + b.value, 0);
   const left = total - used;
   const urgent = credits.filter(b => { const d=getDaysUntilReset(b.period); return d!==null && d<=30 && (b.usedAmount||0)<b.value; });
-
-  const sec = { padding: "14px 18px", borderBottom: "1px solid #1e1e23" };
-  const heading = { fontSize: 13, fontWeight: 600, color: "#f0f0f0", marginBottom: 8 };
+  const sec = { padding:"14px 18px", borderBottom:"1px solid #1e1e23" };
+  const heading = { fontSize:13, fontWeight:600, color:"#f0f0f0", marginBottom:8 };
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.8)", zIndex:1000, overflow:"auto", padding:"20px 12px" }}>
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.85)", zIndex:1000, overflow:"auto", padding:"20px 12px" }}>
       <div style={{ maxWidth:520, margin:"0 auto", background:"#131316", borderRadius:14, border:"1px solid #2a2a30" }}>
         <div style={{ display:"flex", justifyContent:"space-between", padding:"18px 18px 10px" }}>
           <div>
-            <div style={{ fontSize:17, fontWeight:700, color:"#f0f0f0" }}>Monthly Benefits Report</div>
+            <div style={{ fontSize:17, fontWeight:700, color:"#f0f0f0" }}>{card.shortName} — Monthly Report</div>
             <div style={{ fontSize:11, color:"#777" }}>{months[now.getMonth()]} {now.getFullYear()}</div>
           </div>
           <button onClick={onClose} style={{ background:"none", border:"none", color:"#666", fontSize:18, cursor:"pointer", padding:4 }}>x</button>
@@ -177,10 +299,10 @@ function MonthlyReport({ card, email, onClose }) {
         </div>
         <div style={sec}>
           <div style={heading}>Credit Scorecard</div>
-          {[["Annual fee","$895","#f0f0f0"],["Annual value","~$"+Math.round(totalAnnual).toLocaleString(),"#8ecf8e"],["Period available","$"+total.toFixed(0),"#f0f0f0"],["Period used","$"+used.toFixed(2),"#8ecf8e"],["Left on table","$"+left.toFixed(0),left>0?"#e8c76a":"#8ecf8e"]].map(([l,v,c],i) => (
+          {[["Annual fee","$"+card.annualFee,"#f0f0f0"],["Annual value","~$"+Math.round(totalAnnual).toLocaleString(),"#8ecf8e"],["Period available","$"+total.toFixed(0),"#f0f0f0"],["Period used","$"+used.toFixed(2),"#8ecf8e"],["Left on table","$"+left.toFixed(0),left>0?"#e8c76a":"#8ecf8e"]].map(([l,v,c],i) => (
             <div key={i} style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
               <span style={{ fontSize:11, color:"#888" }}>{l}</span>
-              <span style={{ fontSize:12, fontWeight:600, fontFamily:"'JetBrains Mono',monospace", color:c }}>{v}</span>
+              <span style={{ fontSize:12, fontWeight:600, fontFamily:"monospace", color:c }}>{v}</span>
             </div>
           ))}
         </div>
@@ -190,7 +312,7 @@ function MonthlyReport({ card, email, onClose }) {
             {urgent.map(b => (
               <div key={b.id} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0" }}>
                 <span style={{ fontSize:11, color:"#ccc" }}>{b.name} — ${(b.value-(b.usedAmount||0)).toFixed(2)} left</span>
-                <span style={{ fontSize:12, fontWeight:700, fontFamily:"'JetBrains Mono',monospace", color:"#e87c7c" }}>{getDaysUntilReset(b.period)}d</span>
+                <span style={{ fontSize:12, fontWeight:700, fontFamily:"monospace", color:"#e87c7c" }}>{getDaysUntilReset(b.period)}d</span>
               </div>
             ))}
           </div>
@@ -214,10 +336,10 @@ function MonthlyReport({ card, email, onClose }) {
               <div key={b.id} style={{ marginBottom:6 }}>
                 <div style={{ display:"flex", justifyContent:"space-between", marginBottom:2 }}>
                   <span style={{ fontSize:10, color:"#999" }}>{b.name}</span>
-                  <span style={{ fontSize:9, fontFamily:"'JetBrains Mono',monospace", color:"#666" }}>${(b.usedAmount||0).toFixed(2)} / ${b.value}</span>
+                  <span style={{ fontSize:9, fontFamily:"monospace", color:"#666" }}>${(b.usedAmount||0).toFixed(2)} / ${b.value}</span>
                 </div>
                 <div style={{ height:3, background:"#1a1a1f", borderRadius:2, overflow:"hidden" }}>
-                  <div style={{ height:"100%", width:pct+"%", background:pct>=100?"#8ecf8e":pct>0?"#c9a96e":"transparent", borderRadius:2 }} />
+                  <div style={{ height:"100%", width:pct+"%", background:pct>=100?"#8ecf8e":pct>0?card.accent:"transparent", borderRadius:2 }} />
                 </div>
               </div>
             );
@@ -244,7 +366,8 @@ function MonthlyReport({ card, email, onClose }) {
 export default function AmexCoach() {
   const [email, setEmail] = useState(null);
   const [emailInput, setEmailInput] = useState("");
-  const [card, setCard] = useState(null);
+  const [cards, setCards] = useState(null);
+  const [activeId, setActiveId] = useState("amex-platinum");
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [activeTab, setActiveTab] = useState("guide");
@@ -257,16 +380,15 @@ export default function AmexCoach() {
 
   useEffect(() => {
     try { const r = localStorage.getItem(SK_EMAIL); if (r) setEmail(r); } catch (e) {}
-    let loaded = false;
-    try {
-      const r = localStorage.getItem(SK);
-      if (r) { const p = JSON.parse(r); if (p && p.benefits) { setCard(p); loaded = true; } }
-    } catch (e) {}
-    if (!loaded) { const c = buildDefault(); setCard(c); try { localStorage.setItem(SK, JSON.stringify(c)); } catch (e) {} }
+    const c = loadInitialCards();
+    setCards(c);
+    try { localStorage.setItem(MULTI_SK, JSON.stringify(c)); } catch (e) {}
     setLoading(false);
   }, []);
 
-  const save = useCallback((c) => { try { localStorage.setItem(SK, JSON.stringify(c)); } catch (e) {} }, []);
+  const save = useCallback((c) => { try { localStorage.setItem(MULTI_SK, JSON.stringify(c)); } catch (e) {} }, []);
+
+  const switchCard = (id) => { setActiveId(id); setExpandedId(null); setFilter("all"); setShowAnalysis(false); };
 
   const submitEmail = () => {
     const e = emailInput.trim();
@@ -276,24 +398,29 @@ export default function AmexCoach() {
     flash("Welcome!");
   };
 
-  const updateBenefit = (id, u) => { const c = { ...card, benefits: card.benefits.map(b => b.id === id ? { ...b, ...u } : b) }; setCard(c); save(c); };
-  const toggleEnrolled = (id) => { const b = card.benefits.find(x => x.id === id); updateBenefit(id, { enrolled: !b.enrolled }); flash(b.enrolled ? "Unenrolled" : "Enrolled!"); };
-  const setUsedAmt = (id, amt) => { const b = card.benefits.find(x => x.id === id); updateBenefit(id, { usedAmount: Math.min(parseFloat(amt)||0, b.value), used: (parseFloat(amt)||0) > 0 }); };
-  const markFull = (id) => { const b = card.benefits.find(x => x.id === id); updateBenefit(id, { usedAmount: b.value, used: true }); flash("Fully used!"); };
-  const togglePerk = (id) => { const b = card.benefits.find(x => x.id === id); updateBenefit(id, { used: !b.used }); };
+  const updateBenefit = (cardId, benefitId, u) => {
+    const c = cards.map(card => card.id === cardId
+      ? { ...card, benefits: card.benefits.map(b => b.id === benefitId ? { ...b, ...u } : b) }
+      : card);
+    setCards(c);
+    save(c);
+  };
 
-  if (loading || !card) return <div style={{ display:"flex", justifyContent:"center", alignItems:"center", minHeight:"50vh", color:"#666", fontFamily:"sans-serif" }}>Loading...</div>;
+  if (loading || !cards) return <div style={{ display:"flex", justifyContent:"center", alignItems:"center", minHeight:"50vh", color:"#666" }}>Loading...</div>;
 
   if (!email) {
     return (
       <div style={{ fontFamily:"system-ui,sans-serif", background:"#0e0e11", minHeight:"100vh", color:"#e0e0e0", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-        <div style={{ textAlign:"center", maxWidth:440 }}>
-          <div style={{ width:48, height:32, borderRadius:5, background:"linear-gradient(135deg,#c9a96e,#e8d5a8,#c9a96e)", margin:"0 auto 20px" }} />
-          <h1 style={{ fontSize:28, fontWeight:700, lineHeight:1.2, marginBottom:12 }}>Amex Platinum Benefits Coach</h1>
-          <p style={{ fontSize:13, color:"#888", lineHeight:1.7, marginBottom:24 }}>Track every credit, get enrollment guides, avoid pitfalls, and receive monthly reports showing where you stand.</p>
-          <div style={{ display:"flex", gap:20, justifyContent:"center", marginBottom:24, flexWrap:"wrap" }}>
-            {[["$3,800+","annual benefits"],["20","benefits"],["Monthly","reports"]].map(([v,l],i) => (
-              <div key={i}><div style={{ fontSize:20, fontWeight:700, color:"#c9a96e", fontFamily:"monospace" }}>{v}</div><div style={{ fontSize:10, color:"#666" }}>{l}</div></div>
+        <div style={{ textAlign:"center", maxWidth:480 }}>
+          <div style={{ display:"flex", gap:8, justifyContent:"center", marginBottom:24 }}>
+            <div style={{ width:44, height:29, borderRadius:4, background:"linear-gradient(135deg,#c9a96e,#e8d5a8,#c9a96e)" }} />
+            <div style={{ width:44, height:29, borderRadius:4, background:"linear-gradient(135deg,#0a1628,#4a7fc1,#1a3a6b)" }} />
+          </div>
+          <h1 style={{ fontSize:28, fontWeight:700, lineHeight:1.2, marginBottom:12 }}>Multi-Card Benefits Coach</h1>
+          <p style={{ fontSize:13, color:"#888", lineHeight:1.7, marginBottom:24 }}>Track every credit across your Amex Platinum and Chase Sapphire Preferred. Get enrollment guides, avoid pitfalls, and see your combined portfolio ROI.</p>
+          <div style={{ display:"flex", gap:16, justifyContent:"center", marginBottom:28, flexWrap:"wrap" }}>
+            {[["2","cards tracked"],["32","total benefits"],["$4,100+","combined value"],["Monthly","reports"]].map(([v,l],i) => (
+              <div key={i}><div style={{ fontSize:20, fontWeight:700, color:"#c9a96e", fontFamily:"monospace" }}>{v}</div><div style={{ fontSize:10, color:"#555" }}>{l}</div></div>
             ))}
           </div>
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"center" }}>
@@ -307,151 +434,171 @@ export default function AmexCoach() {
     );
   }
 
-  const credits = card.benefits.filter(b => b.value > 0);
-  const perks = card.benefits.filter(b => b.value === 0);
-  const filtered = filter === "all" ? card.benefits : filter === "credits" ? credits : perks;
-  const needsEnroll = card.benefits.filter(b => b.enrollReq && !b.enrolled);
+  const activeCard = cards.find(c => c.id === activeId) || cards[0];
+  const accent = activeCard.accent;
+  const accentA = activeCard.accentAlpha;
+  const credits = activeCard.benefits.filter(b => b.value > 0);
+  const perks = activeCard.benefits.filter(b => b.value === 0);
+  const perkValues = PERK_VALUES[activeCard.id] || {};
+  const filtered = filter === "all" ? activeCard.benefits : filter === "credits" ? credits : perks;
+  const needsEnroll = activeCard.benefits.filter(b => b.enrollReq && !b.enrolled);
   const totalAnnual = credits.reduce((s,b) => s + annualize(b.value, b.period), 0);
   const currentUsed = credits.reduce((s,b) => s + (b.usedAmount||0), 0);
   const currentTotal = credits.reduce((s,b) => s + b.value, 0);
-  const enrolledCount = card.benefits.filter(b => b.enrolled || !b.enrollReq).length;
+  const enrolledCount = activeCard.benefits.filter(b => b.enrolled || !b.enrollReq).length;
+
+  const portfolio = cards.reduce((acc, card) => {
+    const cc = card.benefits.filter(b => b.value > 0);
+    acc.fees += card.annualFee;
+    acc.value += cc.reduce((s,b) => s + annualize(b.value, b.period), 0);
+    acc.redeemed += cc.reduce((s,b) => s + (b.usedAmount||0), 0);
+    return acc;
+  }, { fees: 0, value: 0, redeemed: 0 });
+  portfolio.net = portfolio.redeemed - portfolio.fees;
+  portfolio.util = portfolio.value > 0 ? Math.round((portfolio.redeemed / portfolio.value) * 100) : 0;
 
   return (
-    <div style={{ fontFamily:"system-ui,sans-serif", background:"#0e0e11", minHeight:"100vh", color:"#e0e0e0", padding:"18px 14px 44px", maxWidth:700, margin:"0 auto" }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12, padding:"12px 14px", background:"#151518", borderRadius:10, border:"1px solid #1e1e23" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <div style={{ width:28, height:18, borderRadius:3, background:"linear-gradient(135deg,#c9a96e,#e8d5a8,#c9a96e)" }} />
-          <div><div style={{ fontSize:15, fontWeight:700, color:"#f0f0f0" }}>Amex Platinum</div><div style={{ fontSize:9, color:"#666" }}>Benefits Coach</div></div>
-        </div>
-        <div style={{ display:"flex", gap:5 }}>
-          <button onClick={() => setShowAnalysis(!showAnalysis)} style={{ background:showAnalysis?"rgba(142,207,142,.12)":"rgba(255,255,255,.05)", color:showAnalysis?"#8ecf8e":"#888", border:"1px solid", borderColor:showAnalysis?"rgba(142,207,142,.2)":"#1e1e23", borderRadius:7, padding:"6px 11px", fontSize:10, fontWeight:600, cursor:"pointer" }}>Keep or Cancel?</button>
-          <button onClick={() => setShowReport(true)} style={{ background:"rgba(201,169,110,.1)", color:"#c9a96e", border:"1px solid rgba(201,169,110,.2)", borderRadius:7, padding:"6px 11px", fontSize:10, fontWeight:600, cursor:"pointer" }}>Monthly Report</button>
+    <div style={{ fontFamily:"system-ui,sans-serif", background:"#0e0e11", minHeight:"100vh", color:"#e0e0e0", padding:"16px 14px 44px", maxWidth:700, margin:"0 auto" }}>
+
+      {/* Portfolio Dashboard */}
+      <div style={{ background:"#151518", borderRadius:10, border:"1px solid #1e1e23", padding:"12px 14px", marginBottom:10 }}>
+        <div style={{ fontSize:8, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:8, fontWeight:600 }}>Portfolio Summary</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6 }}>
+          {[
+            ["Combined Fees","$"+portfolio.fees.toLocaleString(),"#aaa"],
+            ["Total Value","~$"+Math.round(portfolio.value).toLocaleString(),"#8ecf8e"],
+            ["Redeemed","$"+portfolio.redeemed.toFixed(0),"#e0e0e0"],
+            ["Net Value",portfolio.net>=0?"$"+portfolio.net.toFixed(0):"-$"+Math.abs(portfolio.net).toFixed(0),portfolio.net>=0?"#8ecf8e":"#e87c7c"],
+          ].map(([l,v,c],i) => (
+            <div key={i} style={{ background:"#0e0e11", borderRadius:6, padding:"8px" }}>
+              <div style={{ fontSize:7, color:"#555", textTransform:"uppercase", marginBottom:3 }}>{l}</div>
+              <div style={{ fontSize:13, fontWeight:700, fontFamily:"monospace", color:c }}>{v}</div>
+            </div>
+          ))}
         </div>
       </div>
 
+      {/* Card Tabs */}
+      <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+        {cards.map(card => {
+          const isActive = card.id === activeId;
+          const v = cardVerdict(card);
+          const cardCredits = card.benefits.filter(b => b.value > 0);
+          const cardUsed = cardCredits.reduce((s,b) => s + (b.usedAmount||0), 0);
+          const cardTotal = cardCredits.reduce((s,b) => s + annualize(b.value,b.period), 0);
+          const util = cardTotal > 0 ? Math.round((cardUsed / cardTotal) * 100) : 0;
+          return (
+            <button key={card.id} onClick={() => switchCard(card.id)} style={{ flex:1, background:isActive?"#151518":"#0e0e11", border:"1px solid", borderColor:isActive?card.accent+"55":"#1e1e23", borderRadius:9, padding:"10px 10px", cursor:"pointer", textAlign:"left", transition:"all .15s" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:5 }}>
+                <div style={{ width:22, height:14, borderRadius:2, background:card.gradient, flexShrink:0 }} />
+                <span style={{ fontSize:11, fontWeight:700, color:isActive?card.accent:"#888", lineHeight:1.2 }}>{card.shortName}</span>
+              </div>
+              <div style={{ fontSize:9, color:"#555", marginBottom:4 }}>${card.annualFee}/yr fee</div>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <span style={{ fontSize:9, color:"#555" }}>{util}% used</span>
+                <span style={{ fontSize:8, fontWeight:700, color:v.color }}>{v.label}</span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Active Card Header */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10, padding:"12px 14px", background:"#151518", borderRadius:10, border:"1px solid #1e1e23" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <div style={{ width:28, height:18, borderRadius:3, background:activeCard.gradient }} />
+          <div>
+            <div style={{ fontSize:14, fontWeight:700, color:"#f0f0f0" }}>{activeCard.name}</div>
+            <div style={{ fontSize:9, color:"#555" }}>{activeCard.issuer} · ${activeCard.annualFee}/yr</div>
+          </div>
+        </div>
+        <div style={{ display:"flex", gap:5 }}>
+          <button onClick={() => setShowAnalysis(!showAnalysis)} style={{ background:showAnalysis?"rgba(142,207,142,.12)":"rgba(255,255,255,.05)", color:showAnalysis?"#8ecf8e":"#888", border:"1px solid", borderColor:showAnalysis?"rgba(142,207,142,.2)":"#1e1e23", borderRadius:7, padding:"6px 10px", fontSize:10, fontWeight:600, cursor:"pointer" }}>Keep or Cancel?</button>
+          <button onClick={() => setShowReport(true)} style={{ background:"rgba("+accentA+",.1)", color:accent, border:"1px solid rgba("+accentA+",.2)", borderRadius:7, padding:"6px 10px", fontSize:10, fontWeight:600, cursor:"pointer" }}>Report</button>
+        </div>
+      </div>
+
+      {/* Enrollment Warning */}
       {needsEnroll.length > 0 && (
         <div style={{ display:"flex", gap:7, alignItems:"center", background:"rgba(232,180,80,.05)", border:"1px solid rgba(232,180,80,.12)", borderRadius:8, padding:"9px 11px", marginBottom:10, fontSize:11, color:"#b89930" }}>
           {needsEnroll.length} benefit{needsEnroll.length !== 1 ? "s" : ""} not enrolled — you are missing credits.
         </div>
       )}
 
+      {/* Keep or Cancel Analysis */}
       {showAnalysis && (() => {
-        const annualFee = 895;
         const now = new Date();
-        const dayOfYear = Math.floor((now - new Date(now.getFullYear(),0,1)) / (1e3*60*60*24)) + 1;
-        const fractionOfYear = dayOfYear / 365;
-        const monthsElapsed = now.getMonth() + 1;
+        const frac = (Math.floor((now - new Date(now.getFullYear(),0,1)) / 864e5) + 1) / 365;
+        const mo = now.getMonth() + 1;
+        const redeemed = credits.reduce((s,b) => s + (b.usedAmount||0), 0);
+        const perkVal = perks.reduce((s,b) => s + (b.used ? (perkValues[b.id]||0) : 0), 0);
+        const proj = Math.round(frac > 0 ? redeemed / frac : 0) + perkVal;
+        const maxPoss = Math.round(totalAnnual);
+        const feePct = Math.min(100, Math.round(((redeemed+perkVal) / activeCard.annualFee) * 100));
+        const projPct = Math.min(100, Math.round((proj / activeCard.annualFee) * 100));
+        const usedPerks = perks.filter(b => b.used).length;
 
-        const creditRedeemed = credits.reduce((s,b) => s + (b.usedAmount || 0), 0);
-        const annualizedCredits = fractionOfYear > 0 ? Math.round(creditRedeemed / fractionOfYear) : 0;
-        const maxPossible = Math.round(totalAnnual);
-
-        const perkValues = {
-          "centurion": 150, "pp": 100, "dsc": 125, "hilton": 300,
-          "marriott": 200, "cell": 180, "nofx": 100
-        };
-        const perkValueUsed = perks.reduce((s,b) => s + (b.used ? (perkValues[b.id] || 50) : 0), 0);
-        const totalValueRealized = creditRedeemed + perkValueUsed;
-        const projectedTotal = annualizedCredits + perkValueUsed;
-
-        const feePct = Math.min(100, Math.round((totalValueRealized / annualFee) * 100));
-        const projPct = Math.min(100, Math.round((projectedTotal / annualFee) * 100));
-
-        let verdict, verdictColor, verdictBg, reasons;
+        let verdict, vColor, vBg, reasons;
         if (feePct >= 100) {
-          verdict = "KEEP — Already Paid For Itself";
-          verdictColor = "#8ecf8e";
-          verdictBg = "rgba(142,207,142,.08)";
-          reasons = ["You have already recouped the $895 annual fee in realized value.", "Every additional benefit you use is pure profit."];
+          verdict = "KEEP — Already Paid For Itself"; vColor = "#8ecf8e"; vBg = "rgba(142,207,142,.08)";
+          reasons = ["You have already recouped the $"+activeCard.annualFee+" annual fee.", "Every additional benefit you use is pure profit."];
         } else if (projPct >= 100) {
-          verdict = "KEEP — On Track to Break Even";
-          verdictColor = "#c9a96e";
-          verdictBg = "rgba(201,169,110,.06)";
-          reasons = ["At your current pace, you will exceed the $895 fee by year-end.", "Focus on maximizing monthly and quarterly credits to stay on track."];
+          verdict = "KEEP — On Track to Break Even"; vColor = "#c9a96e"; vBg = "rgba(201,169,110,.06)";
+          reasons = ["At your current pace, you will exceed the $"+activeCard.annualFee+" fee by year-end.", "Focus on maximizing credits to stay on track."];
         } else if (projPct >= 70) {
-          verdict = "BORDERLINE — Close But Not There Yet";
-          verdictColor = "#e8c76a";
-          verdictBg = "rgba(232,180,80,.06)";
-          reasons = ["You are projected to recoup ~" + projPct + "% of the fee.", "Activating more perks or enrolling in unused credits could push you over."];
+          verdict = "BORDERLINE — Close But Not There Yet"; vColor = "#e8c76a"; vBg = "rgba(232,180,80,.06)";
+          reasons = ["You are projected to recoup ~"+projPct+"% of the $"+activeCard.annualFee+" fee.", "Enrolling in more benefits or using more perks could push you over."];
         } else {
-          verdict = "CONSIDER CANCELLING";
-          verdictColor = "#e87c7c";
-          verdictBg = "rgba(232,124,124,.06)";
-          reasons = ["You are on pace to recoup only ~" + projPct + "% of the $895 fee.", "Review unenrolled benefits — there may be easy value you are missing."];
+          verdict = "CONSIDER CANCELLING"; vColor = "#e87c7c"; vBg = "rgba(232,124,124,.06)";
+          reasons = ["You are on pace to recoup only ~"+projPct+"% of the $"+activeCard.annualFee+" fee.", "Review unenrolled benefits — there may be easy value you are missing."];
         }
-
-        if (needsEnroll.length > 3) {
-          reasons.push(needsEnroll.length + " benefits still not enrolled. Enrolling could significantly increase your return.");
-        }
-
-        const usedPerksCount = perks.filter(b => b.used).length;
-        if (usedPerksCount < 3) {
-          reasons.push("Only " + usedPerksCount + " of " + perks.length + " perks activated. Lounge access, hotel status, and insurance add significant value.");
-        }
+        if (needsEnroll.length > 3) reasons.push(needsEnroll.length+" benefits still not enrolled. Enrolling could significantly increase your return.");
+        if (usedPerks < Math.floor(perks.length / 2)) reasons.push("Only "+usedPerks+" of "+perks.length+" perks activated. Mark them as you use them to improve your score.");
 
         return (
           <div style={{ background:"#151518", borderRadius:10, border:"1px solid #1e1e23", padding:"16px 14px", marginBottom:10 }}>
-            <div style={{ background:verdictBg, border:"1px solid", borderColor:verdictColor+"33", borderRadius:8, padding:"12px 14px", marginBottom:14, textAlign:"center" }}>
-              <div style={{ fontSize:14, fontWeight:700, color:verdictColor, marginBottom:4 }}>{verdict}</div>
-              <div style={{ fontSize:11, color:"#888" }}>Based on {monthsElapsed} months of tracking data</div>
+            <div style={{ background:vBg, border:"1px solid", borderColor:vColor+"33", borderRadius:8, padding:"12px 14px", marginBottom:14, textAlign:"center" }}>
+              <div style={{ fontSize:14, fontWeight:700, color:vColor, marginBottom:4 }}>{verdict}</div>
+              <div style={{ fontSize:11, color:"#888" }}>Based on {mo} months of tracking · {activeCard.name}</div>
             </div>
-
             <div style={{ marginBottom:14 }}>
               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
                 <span style={{ fontSize:11, color:"#999" }}>Fee Recovery</span>
                 <span style={{ fontSize:12, fontWeight:700, fontFamily:"monospace", color:feePct>=100?"#8ecf8e":"#f0f0f0" }}>{feePct}%</span>
               </div>
               <div style={{ height:8, background:"#0e0e11", borderRadius:4, overflow:"hidden", position:"relative" }}>
-                <div style={{ position:"absolute", left:0, top:0, height:"100%", width:feePct+"%", background:feePct>=100?"linear-gradient(90deg,#4a9e4a,#8ecf8e)":feePct>=70?"linear-gradient(90deg,#b89930,#e8c76a)":"linear-gradient(90deg,#b84040,#e87c7c)", borderRadius:4 }} />
+                <div style={{ position:"absolute", left:0, top:0, height:"100%", width:feePct+"%", background:feePct>=100?"#8ecf8e":feePct>=70?"#e8c76a":"#e87c7c", borderRadius:4 }} />
               </div>
               <div style={{ display:"flex", justifyContent:"space-between", marginTop:3 }}>
                 <span style={{ fontSize:9, color:"#555" }}>$0</span>
-                <span style={{ fontSize:9, color:"#555" }}>$895 fee</span>
+                <span style={{ fontSize:9, color:"#555" }}>${activeCard.annualFee} fee</span>
               </div>
             </div>
-
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:14 }}>
-              <div style={{ background:"#0e0e11", borderRadius:6, padding:"10px" }}>
-                <div style={{ fontSize:8, color:"#555", textTransform:"uppercase", marginBottom:3 }}>Credits Redeemed</div>
-                <div style={{ fontSize:18, fontWeight:700, fontFamily:"monospace", color:"#8ecf8e" }}>${creditRedeemed.toFixed(0)}</div>
-                <div style={{ fontSize:9, color:"#555" }}>of ~${maxPossible.toLocaleString()} possible/yr</div>
-              </div>
-              <div style={{ background:"#0e0e11", borderRadius:6, padding:"10px" }}>
-                <div style={{ fontSize:8, color:"#555", textTransform:"uppercase", marginBottom:3 }}>Est. Perk Value</div>
-                <div style={{ fontSize:18, fontWeight:700, fontFamily:"monospace", color:"#c9a96e" }}>${perkValueUsed}</div>
-                <div style={{ fontSize:9, color:"#555" }}>{usedPerksCount} of {perks.length} perks used</div>
-              </div>
-              <div style={{ background:"#0e0e11", borderRadius:6, padding:"10px" }}>
-                <div style={{ fontSize:8, color:"#555", textTransform:"uppercase", marginBottom:3 }}>Total Value Realized</div>
-                <div style={{ fontSize:18, fontWeight:700, fontFamily:"monospace", color:totalValueRealized >= annualFee ? "#8ecf8e" : "#f0f0f0" }}>${totalValueRealized.toFixed(0)}</div>
-                <div style={{ fontSize:9, color:"#555" }}>credits + est. perks</div>
-              </div>
-              <div style={{ background:"#0e0e11", borderRadius:6, padding:"10px" }}>
-                <div style={{ fontSize:8, color:"#555", textTransform:"uppercase", marginBottom:3 }}>Projected Annual</div>
-                <div style={{ fontSize:18, fontWeight:700, fontFamily:"monospace", color:projectedTotal >= annualFee ? "#8ecf8e" : "#e8c76a" }}>${projectedTotal.toFixed(0)}</div>
-                <div style={{ fontSize:9, color:"#555" }}>at current pace</div>
-              </div>
-            </div>
-
-            <div style={{ borderTop:"1px solid #1e1e23", paddingTop:10 }}>
-              <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", marginBottom:6, fontWeight:600 }}>Key Factors</div>
-              {reasons.map((r, i) => (
-                <div key={i} style={{ display:"flex", gap:5, marginBottom:4 }}>
-                  <span style={{ color:verdictColor, fontSize:10, flexShrink:0 }}>-</span>
-                  <span style={{ fontSize:11, color:"#aaa", lineHeight:1.4 }}>{r}</span>
+              {[["Credits Redeemed","$"+redeemed.toFixed(0),"of ~$"+maxPoss.toLocaleString()+" possible/yr","#8ecf8e"],["Est. Perk Value","$"+perkVal,usedPerks+" of "+perks.length+" perks used",accent],["Total Realized","$"+(redeemed+perkVal).toFixed(0),"credits + est. perks",(redeemed+perkVal)>=activeCard.annualFee?"#8ecf8e":"#f0f0f0"],["Projected Annual","$"+proj.toFixed(0),"at current pace",proj>=activeCard.annualFee?"#8ecf8e":"#e8c76a"]].map(([l,v,sub,c],i) => (
+                <div key={i} style={{ background:"#0e0e11", borderRadius:6, padding:"10px" }}>
+                  <div style={{ fontSize:8, color:"#555", textTransform:"uppercase", marginBottom:3 }}>{l}</div>
+                  <div style={{ fontSize:18, fontWeight:700, fontFamily:"monospace", color:c }}>{v}</div>
+                  <div style={{ fontSize:9, color:"#555" }}>{sub}</div>
                 </div>
               ))}
             </div>
-
-            <div style={{ fontSize:9, color:"#444", marginTop:10, lineHeight:1.4 }}>
-              Perk values are estimates based on typical usage. Lounge access valued at $100-$150/yr, hotel elite status at $200-$300/yr, cell phone protection at ~$180/yr. Your actual value may vary based on usage patterns.
+            <div style={{ borderTop:"1px solid #1e1e23", paddingTop:10 }}>
+              <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", marginBottom:6, fontWeight:600 }}>Key Factors</div>
+              {reasons.map((r,i) => (
+                <div key={i} style={{ display:"flex", gap:5, marginBottom:4 }}>
+                  <span style={{ color:vColor, fontSize:10, flexShrink:0 }}>-</span>
+                  <span style={{ fontSize:11, color:"#aaa", lineHeight:1.4 }}>{r}</span>
+                </div>
+              ))}
             </div>
           </div>
         );
       })()}
 
+      {/* Stats Grid */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:5, marginBottom:10 }}>
-        {[["Annual Value","~$"+Math.round(totalAnnual).toLocaleString(),"#8ecf8e"],["Period Used","$"+currentUsed.toFixed(0)+"/$"+currentTotal.toFixed(0),"#c9a96e"],["Enrolled",enrolledCount+"/"+card.benefits.length,enrolledCount===card.benefits.length?"#8ecf8e":"#e8c76a"]].map(([l,v,c],i) => (
+        {[["Annual Value","~$"+Math.round(totalAnnual).toLocaleString(),"#8ecf8e"],["Period Used","$"+currentUsed.toFixed(0)+"/$"+currentTotal.toFixed(0),accent],["Enrolled",enrolledCount+"/"+activeCard.benefits.length,enrolledCount===activeCard.benefits.length?"#8ecf8e":"#e8c76a"]].map(([l,v,c],i) => (
           <div key={i} style={{ background:"#151518", borderRadius:8, padding:"10px", border:"1px solid #1a1a1f" }}>
             <div style={{ fontSize:8, color:"#555", textTransform:"uppercase", letterSpacing:".3px", marginBottom:3 }}>{l}</div>
             <div style={{ fontSize:15, fontWeight:700, fontFamily:"monospace", color:c }}>{v}</div>
@@ -459,12 +606,14 @@ export default function AmexCoach() {
         ))}
       </div>
 
+      {/* Filter Tabs */}
       <div style={{ display:"flex", gap:4, marginBottom:8 }}>
-        {[["all","All ("+card.benefits.length+")"],["credits","Credits ("+credits.length+")"],["perks","Perks ("+perks.length+")"]].map(([k,l]) => (
-          <button key={k} onClick={() => setFilter(k)} style={{ background:filter===k?"rgba(201,169,110,.08)":"transparent", color:filter===k?"#c9a96e":"#555", border:"1px solid", borderColor:filter===k?"rgba(201,169,110,.2)":"#1a1a1f", borderRadius:5, padding:"3px 9px", fontSize:10, cursor:"pointer", fontFamily:"inherit" }}>{l}</button>
+        {[["all","All ("+activeCard.benefits.length+")"],["credits","Credits ("+credits.length+")"],["perks","Perks ("+perks.length+")"]].map(([k,l]) => (
+          <button key={k} onClick={() => setFilter(k)} style={{ background:filter===k?"rgba("+accentA+",.08)":"transparent", color:filter===k?accent:"#555", border:"1px solid", borderColor:filter===k?"rgba("+accentA+",.2)":"#1a1a1f", borderRadius:5, padding:"3px 9px", fontSize:10, cursor:"pointer", fontFamily:"inherit" }}>{l}</button>
         ))}
       </div>
 
+      {/* Benefit Rows */}
       {filtered.map(b => {
         const open = expandedId === b.id;
         const isPerk = b.value === 0;
@@ -474,6 +623,11 @@ export default function AmexCoach() {
         const needsE = b.enrollReq && !b.enrolled;
         const dot = done ? "#8ecf8e" : needsE ? "#e8c76a" : "#555";
 
+        const toggleEnrolled = () => { updateBenefit(activeCard.id, b.id, { enrolled: !b.enrolled }); flash(b.enrolled ? "Unenrolled" : "Enrolled!"); };
+        const setUsedAmt = (amt) => { updateBenefit(activeCard.id, b.id, { usedAmount: Math.min(parseFloat(amt)||0, b.value), used: (parseFloat(amt)||0) > 0 }); };
+        const markFull = () => { updateBenefit(activeCard.id, b.id, { usedAmount: b.value, used: true }); flash("Fully used!"); };
+        const togglePerk = () => { updateBenefit(activeCard.id, b.id, { used: !b.used }); };
+
         return (
           <div key={b.id} style={{ background:"#151518", borderRadius:9, border:"1px solid", borderColor:done?"rgba(142,207,142,.18)":needsE?"rgba(232,180,80,.12)":"#1e1e23", marginBottom:4, overflow:"hidden" }}>
             <div onClick={() => { setExpandedId(open?null:b.id); setActiveTab("guide"); }} style={{ display:"flex", alignItems:"center", gap:7, padding:"10px 11px", cursor:"pointer" }}>
@@ -481,7 +635,7 @@ export default function AmexCoach() {
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{ fontSize:12, fontWeight:600, color:"#ddd", marginBottom:1 }}>{b.name}</div>
                 <div style={{ display:"flex", gap:3, flexWrap:"wrap", alignItems:"center" }}>
-                  <span style={{ fontSize:8, color:"#c9a96e", background:"rgba(201,169,110,.07)", padding:"1px 5px", borderRadius:3 }}>{b.cat}</span>
+                  <span style={{ fontSize:8, color:accent, background:"rgba("+accentA+",.07)", padding:"1px 5px", borderRadius:3 }}>{b.cat}</span>
                   <span style={{ fontSize:8, color:"#555", background:"rgba(255,255,255,.03)", padding:"1px 5px", borderRadius:3 }}>{b.period}</span>
                   {days != null && <span style={{ fontSize:8, color:days<=14?"#e87c7c":days<=30?"#e8c76a":"#555", background:"rgba(255,255,255,.03)", padding:"1px 5px", borderRadius:3 }}>{days}d</span>}
                   {needsE && <span style={{ fontSize:7, color:"#e8c76a", background:"rgba(232,180,80,.1)", padding:"1px 5px", borderRadius:3, fontWeight:700 }}>NOT ENROLLED</span>}
@@ -489,18 +643,18 @@ export default function AmexCoach() {
               </div>
               <div style={{ textAlign:"right" }}>
                 {isPerk ? <span style={{ fontSize:9, color:"#555" }}>Perk</span> : <span style={{ fontSize:13, fontWeight:700, fontFamily:"monospace", color:"#f0f0f0" }}>${b.value}<span style={{ fontSize:9, color:"#555", fontWeight:400 }}>{getPeriodLabel(b.period)}</span></span>}
-                <div style={{ fontSize:8, color:"#333", marginTop:1 }}>{open ? "^" : "v"}</div>
+                <div style={{ fontSize:8, color:"#333", marginTop:1 }}>{open?"^":"v"}</div>
               </div>
             </div>
 
-            {!isPerk && <div style={{ height:2, background:"#1a1a1f", marginLeft:11, marginRight:11 }}><div style={{ height:"100%", width:pct+"%", background:pct>=100?"#8ecf8e":pct>0?"#c9a96e":"transparent" }} /></div>}
+            {!isPerk && <div style={{ height:2, background:"#1a1a1f", marginLeft:11, marginRight:11 }}><div style={{ height:"100%", width:pct+"%", background:pct>=100?"#8ecf8e":pct>0?accent:"transparent" }} /></div>}
 
             {open && (
               <div style={{ padding:"0 11px 12px" }}>
-                <p style={{ fontSize:12.5, fontWeight:600, color:"#c9a96e", margin:"6px 0 8px", lineHeight:1.4 }}>{b.headline}</p>
+                <p style={{ fontSize:12.5, fontWeight:600, color:accent, margin:"6px 0 8px", lineHeight:1.4 }}>{b.headline}</p>
                 <div style={{ display:"flex", gap:3, marginBottom:7, borderBottom:"1px solid #1a1a1f", paddingBottom:5 }}>
                   {[["guide","How to Use"],["tips","Pro Tips"],["pitfalls","Pitfalls"]].map(([k,l]) => (
-                    <button key={k} onClick={() => setActiveTab(k)} style={{ background:activeTab===k?"rgba(201,169,110,.08)":"transparent", color:activeTab===k?"#c9a96e":"#555", border:"none", padding:"3px 7px", fontSize:10, cursor:"pointer", borderRadius:4, fontFamily:"inherit" }}>{l}</button>
+                    <button key={k} onClick={() => setActiveTab(k)} style={{ background:activeTab===k?"rgba("+accentA+",.08)":"transparent", color:activeTab===k?accent:"#555", border:"none", padding:"3px 7px", fontSize:10, cursor:"pointer", borderRadius:4, fontFamily:"inherit" }}>{l}</button>
                   ))}
                 </div>
                 <div style={{ minHeight:40, marginBottom:8 }}>
@@ -508,14 +662,14 @@ export default function AmexCoach() {
                     <div>
                       {b.howTo.map((s,i) => (
                         <div key={i} style={{ display:"flex", gap:6, marginBottom:5 }}>
-                          <span style={{ width:16, height:16, borderRadius:8, background:"rgba(201,169,110,.1)", color:"#c9a96e", display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, flexShrink:0 }}>{i+1}</span>
+                          <span style={{ width:16, height:16, borderRadius:8, background:"rgba("+accentA+",.1)", color:accent, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, flexShrink:0 }}>{i+1}</span>
                           <span style={{ fontSize:11, color:"#bbb", lineHeight:1.5 }}>{s}</span>
                         </div>
                       ))}
                       {b.enrollReq && (
-                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, background:"rgba(201,169,110,.04)", border:"1px solid rgba(201,169,110,.1)", borderRadius:6, padding:"8px 9px", marginTop:6, flexWrap:"wrap" }}>
-                          <div><div style={{ fontSize:9, color:"#c9a96e", fontWeight:600 }}>ENROLLMENT</div><div style={{ fontSize:10, color:"#999" }}>{b.enrollAction}</div></div>
-                          <button onClick={(e) => { e.stopPropagation(); toggleEnrolled(b.id); }} style={{ background:b.enrolled?"rgba(142,207,142,.12)":"rgba(201,169,110,.12)", color:b.enrolled?"#8ecf8e":"#c9a96e", border:"none", borderRadius:5, padding:"4px 10px", fontSize:10, fontWeight:600, cursor:"pointer" }}>
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, background:"rgba("+accentA+",.04)", border:"1px solid rgba("+accentA+",.1)", borderRadius:6, padding:"8px 9px", marginTop:6, flexWrap:"wrap" }}>
+                          <div><div style={{ fontSize:9, color:accent, fontWeight:600 }}>ENROLLMENT</div><div style={{ fontSize:10, color:"#999" }}>{b.enrollAction}</div></div>
+                          <button onClick={(e) => { e.stopPropagation(); toggleEnrolled(); }} style={{ background:b.enrolled?"rgba(142,207,142,.12)":"rgba("+accentA+",.12)", color:b.enrolled?"#8ecf8e":accent, border:"none", borderRadius:5, padding:"4px 10px", fontSize:10, fontWeight:600, cursor:"pointer" }}>
                             {b.enrolled ? "Enrolled" : "Mark Enrolled"}
                           </button>
                         </div>
@@ -524,20 +678,20 @@ export default function AmexCoach() {
                   )}
                   {activeTab === "tips" && b.tips.map((t,i) => (
                     <div key={i} style={{ display:"flex", gap:5, marginBottom:5 }}>
-                      <span style={{ fontSize:10, flexShrink:0 }}>{"*"}</span>
+                      <span style={{ fontSize:10, flexShrink:0 }}>*</span>
                       <span style={{ fontSize:11, color:"#a8d8a8", lineHeight:1.5 }}>{t}</span>
                     </div>
                   ))}
                   {activeTab === "pitfalls" && b.pitfalls.map((p,i) => (
                     <div key={i} style={{ display:"flex", gap:5, marginBottom:5 }}>
-                      <span style={{ fontSize:10, flexShrink:0 }}>{"!"}</span>
+                      <span style={{ fontSize:10, flexShrink:0 }}>!</span>
                       <span style={{ fontSize:11, color:"#e8c76a", lineHeight:1.5 }}>{p}</span>
                     </div>
                   ))}
                 </div>
                 <div style={{ borderTop:"1px solid #1a1a1f", paddingTop:7 }}>
                   {isPerk ? (
-                    <button onClick={() => togglePerk(b.id)} style={{ width:"100%", border:"none", borderRadius:5, padding:"6px", fontSize:10, fontWeight:600, cursor:"pointer", background:b.used?"rgba(142,207,142,.1)":"rgba(201,169,110,.1)", color:b.used?"#8ecf8e":"#c9a96e" }}>
+                    <button onClick={() => togglePerk()} style={{ width:"100%", border:"none", borderRadius:5, padding:"6px", fontSize:10, fontWeight:600, cursor:"pointer", background:b.used?"rgba(142,207,142,.1)":"rgba("+accentA+",.1)", color:b.used?"#8ecf8e":accent }}>
                       {b.used ? "Benefit Used" : "Mark as Used"}
                     </button>
                   ) : (
@@ -545,11 +699,11 @@ export default function AmexCoach() {
                       <span style={{ fontSize:10, color:"#666" }}>Used:</span>
                       <div style={{ display:"flex", alignItems:"center", gap:3, background:"#0e0e11", border:"1px solid #1a1a1f", borderRadius:4, padding:"3px 6px" }}>
                         <span style={{ color:"#555", fontSize:11 }}>$</span>
-                        <input type="number" value={b.usedAmount||""} placeholder="0" min="0" max={b.value} step="0.01" onChange={e => setUsedAmt(b.id,e.target.value)}
+                        <input type="number" value={b.usedAmount||""} placeholder="0" min="0" max={b.value} step="0.01" onChange={e => setUsedAmt(e.target.value)}
                           style={{ width:45, background:"transparent", border:"none", color:"#e0e0e0", fontSize:11, fontFamily:"monospace", textAlign:"right", outline:"none" }} />
                         <span style={{ color:"#444", fontSize:10 }}>/ ${b.value}</span>
                       </div>
-                      <button onClick={() => markFull(b.id)} style={{ background:"rgba(201,169,110,.1)", color:"#c9a96e", border:"none", borderRadius:3, padding:"3px 7px", fontSize:9, fontWeight:600, cursor:"pointer" }}>Max</button>
+                      <button onClick={() => markFull()} style={{ background:"rgba("+accentA+",.1)", color:accent, border:"none", borderRadius:3, padding:"3px 7px", fontSize:9, fontWeight:600, cursor:"pointer" }}>Max</button>
                     </div>
                   )}
                 </div>
@@ -559,7 +713,7 @@ export default function AmexCoach() {
         );
       })}
 
-      {showReport && <MonthlyReport card={card} email={email} onClose={() => setShowReport(false)} />}
+      {showReport && <MonthlyReport card={activeCard} email={email} onClose={() => setShowReport(false)} />}
       {toast && <div style={{ position:"fixed", bottom:16, left:"50%", transform:"translateX(-50%)", background:"#222", color:"#e0e0e0", padding:"6px 14px", borderRadius:7, fontSize:11, border:"1px solid #333", zIndex:1100 }}>{toast}</div>}
     </div>
   );
