@@ -1,15 +1,5 @@
 services:
   - type: web
-    name: amex-landing-page
-    runtime: static
-    staticPublishPath: .
-    pullRequestPreviewsEnabled: false
-    headers:
-      - path: /*
-        name: Cache-Control
-        value: no-cache
-
-  - type: web
     name: amex-tracker
     runtime: static
     buildCommand: cd tracker && npm install && npm run build

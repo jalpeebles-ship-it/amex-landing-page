@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 
 const MULTI_SK = "multi-card-tracker-v1";
-const OLD_SK = "amex-coach-v5";
+const OLD_SK   = "amex-coach-v5";
 const SK_EMAIL = "amex-coach-email-v5";
+const API_URL  = "https://amex-benefits-backend.onrender.com";
 
 function getDaysUntilReset(p) {
   const n = new Date();
@@ -225,9 +226,23 @@ const CSP_BENEFITS = [
     enrollReq: false, enrollAction: "Automatic — transfer through chase.com/ultimaterewards" },
 ];
 
-const CARD_CONFIGS = [
-  { id: "amex-platinum", name: "Amex Platinum", shortName: "Amex Plat", issuer: "American Express", annualFee: 895, accent: "#c9a96e", accentAlpha: "201,169,110", gradient: "linear-gradient(135deg,#c9a96e,#e8d5a8,#c9a96e)", benefits: AMEX_BENEFITS },
-  { id: "csp", name: "Chase Sapphire Preferred", shortName: "Chase CSP", issuer: "Chase", annualFee: 95, accent: "#4a7fc1", accentAlpha: "74,127,193", gradient: "linear-gradient(135deg,#0a1628,#4a7fc1,#1a3a6b)", benefits: CSP_BENEFITS },
+const CARD_LIBRARY = [
+  {
+    id: "amex-platinum", name: "Amex Platinum", shortName: "Amex Plat",
+    issuer: "American Express", annualFee: 895,
+    tagline: "Premium travel card with the most credits",
+    accent: "#c9a96e", accentAlpha: "201,169,110",
+    gradient: "linear-gradient(135deg,#c9a96e,#e8d5a8,#c9a96e)",
+    benefits: AMEX_BENEFITS,
+  },
+  {
+    id: "csp", name: "Chase Sapphire Preferred", shortName: "Chase CSP",
+    issuer: "Chase", annualFee: 95,
+    tagline: "Best-value travel card with 3x dining & travel",
+    accent: "#4a7fc1", accentAlpha: "74,127,193",
+    gradient: "linear-gradient(135deg,#0a1628,#4a7fc1,#1a3a6b)",
+    benefits: CSP_BENEFITS,
+  },
 ];
 
 const PERK_VALUES = {
@@ -235,24 +250,54 @@ const PERK_VALUES = {
   "csp": { "rental-car": 180, "trip-cancel": 100, "transfer-points": 100, "csp-nofx": 50 },
 };
 
-function buildDefault() {
-  return CARD_CONFIGS.map(c => ({
-    ...c,
-    benefits: c.benefits.map(b => ({ ...b, enrolled: false, usedAmount: 0, used: false }))
-  }));
-}
+function loadState() {
+  let legacyEmail = null;
+  try { legacyEmail = localStorage.getItem(SK_EMAIL); } catch (e) {}
 
-function loadInitialCards() {
   try {
-    const r = localStorage.getItem(MULTI_SK);
-    if (r) { const p = JSON.parse(r); if (Array.isArray(p) && p.length > 0) return p; }
+    const raw = localStorage.getItem(MULTI_SK);
+    if (raw) {
+      const p = JSON.parse(raw);
+      // New structured format
+      if (p && p.addedCardIds) {
+        return { addedCardIds: p.addedCardIds, benefits: p.benefits || {}, email: p.email || legacyEmail };
+      }
+      // Old array format (previous multi-card build)
+      if (Array.isArray(p) && p.length > 0) {
+        const addedCardIds = p.map(c => c.id);
+        const benefits = {};
+        p.forEach(c => { benefits[c.id] = c.benefits; });
+        return { addedCardIds, benefits, email: legacyEmail };
+      }
+    }
   } catch (e) {}
-  const cards = buildDefault();
+
+  // Old single-card format
   try {
     const old = localStorage.getItem(OLD_SK);
-    if (old) { const p = JSON.parse(old); if (p && p.benefits) cards[0].benefits = p.benefits; }
+    if (old) {
+      const p = JSON.parse(old);
+      if (p && p.benefits) {
+        return { addedCardIds: ["amex-platinum"], benefits: { "amex-platinum": p.benefits }, email: legacyEmail };
+      }
+    }
   } catch (e) {}
-  return cards;
+
+  return { addedCardIds: [], benefits: {}, email: legacyEmail };
+}
+
+function persist(state) {
+  try { localStorage.setItem(MULTI_SK, JSON.stringify(state)); } catch (e) {}
+}
+
+function mergeBenefits(libraryBenefits, stored) {
+  if (!stored) return libraryBenefits.map(b => ({ ...b, enrolled: false, usedAmount: 0, used: false }));
+  const storedMap = {};
+  stored.forEach(b => { storedMap[b.id] = b; });
+  return libraryBenefits.map(b => {
+    const s = storedMap[b.id];
+    return s ? { ...b, enrolled: !!s.enrolled, usedAmount: s.usedAmount || 0, used: !!s.used } : { ...b, enrolled: false, usedAmount: 0, used: false };
+  });
 }
 
 function cardVerdict(card) {
@@ -260,9 +305,9 @@ function cardVerdict(card) {
   const perks = card.benefits.filter(b => b.value === 0);
   const pv = PERK_VALUES[card.id] || {};
   const now = new Date();
-  const frac = (Math.floor((now - new Date(now.getFullYear(),0,1)) / 864e5) + 1) / 365;
-  const redeemed = credits.reduce((s,b) => s + (b.usedAmount||0), 0);
-  const perkVal = perks.reduce((s,b) => s + (b.used ? (pv[b.id]||0) : 0), 0);
+  const frac = (Math.floor((now - new Date(now.getFullYear(), 0, 1)) / 864e5) + 1) / 365;
+  const redeemed = credits.reduce((s, b) => s + (b.usedAmount || 0), 0);
+  const perkVal = perks.reduce((s, b) => s + (b.used ? (pv[b.id] || 0) : 0), 0);
   const proj = Math.round(frac > 0 ? redeemed / frac : 0) + perkVal;
   const pct = Math.min(100, Math.round((proj / card.annualFee) * 100));
   if (pct >= 100) return { label: "KEEP", color: "#8ecf8e" };
@@ -276,54 +321,54 @@ function MonthlyReport({ card, email, onClose }) {
   const credits = card.benefits.filter(b => b.value > 0);
   const perks = card.benefits.filter(b => b.value === 0);
   const needsEnroll = card.benefits.filter(b => b.enrollReq && !b.enrolled);
-  const totalAnnual = credits.reduce((s,b) => s + annualize(b.value,b.period), 0);
-  const used = credits.reduce((s,b) => s + (b.usedAmount||0), 0);
-  const total = credits.reduce((s,b) => s + b.value, 0);
+  const totalAnnual = credits.reduce((s, b) => s + annualize(b.value, b.period), 0);
+  const used = credits.reduce((s, b) => s + (b.usedAmount || 0), 0);
+  const total = credits.reduce((s, b) => s + b.value, 0);
   const left = total - used;
-  const urgent = credits.filter(b => { const d=getDaysUntilReset(b.period); return d!==null && d<=30 && (b.usedAmount||0)<b.value; });
-  const sec = { padding:"14px 18px", borderBottom:"1px solid #1e1e23" };
-  const heading = { fontSize:13, fontWeight:600, color:"#f0f0f0", marginBottom:8 };
+  const urgent = credits.filter(b => { const d = getDaysUntilReset(b.period); return d !== null && d <= 30 && (b.usedAmount || 0) < b.value; });
+  const sec = { padding: "14px 18px", borderBottom: "1px solid #1e1e23" };
+  const heading = { fontSize: 13, fontWeight: 600, color: "#f0f0f0", marginBottom: 8 };
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.85)", zIndex:1000, overflow:"auto", padding:"20px 12px" }}>
-      <div style={{ maxWidth:520, margin:"0 auto", background:"#131316", borderRadius:14, border:"1px solid #2a2a30" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", padding:"18px 18px 10px" }}>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.85)", zIndex: 1000, overflow: "auto", padding: "20px 12px" }}>
+      <div style={{ maxWidth: 520, margin: "0 auto", background: "#131316", borderRadius: 14, border: "1px solid #2a2a30" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "18px 18px 10px" }}>
           <div>
-            <div style={{ fontSize:17, fontWeight:700, color:"#f0f0f0" }}>{card.shortName} — Monthly Report</div>
-            <div style={{ fontSize:11, color:"#777" }}>{months[now.getMonth()]} {now.getFullYear()}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: "#f0f0f0" }}>{card.shortName} — Monthly Report</div>
+            <div style={{ fontSize: 11, color: "#777" }}>{months[now.getMonth()]} {now.getFullYear()}</div>
           </div>
-          <button onClick={onClose} style={{ background:"none", border:"none", color:"#666", fontSize:18, cursor:"pointer", padding:4 }}>x</button>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#666", fontSize: 18, cursor: "pointer", padding: 4 }}>x</button>
         </div>
-        <div style={{ ...sec, fontSize:12, color:"#aaa", lineHeight:1.6 }}>
+        <div style={{ ...sec, fontSize: 12, color: "#aaa", lineHeight: 1.6 }}>
           {left > 0 ? "You have $" + left.toFixed(0) + " in credits expiring this period." : "All credits utilized this period!"}
         </div>
         <div style={sec}>
           <div style={heading}>Credit Scorecard</div>
-          {[["Annual fee","$"+card.annualFee,"#f0f0f0"],["Annual value","~$"+Math.round(totalAnnual).toLocaleString(),"#8ecf8e"],["Period available","$"+total.toFixed(0),"#f0f0f0"],["Period used","$"+used.toFixed(2),"#8ecf8e"],["Left on table","$"+left.toFixed(0),left>0?"#e8c76a":"#8ecf8e"]].map(([l,v,c],i) => (
-            <div key={i} style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-              <span style={{ fontSize:11, color:"#888" }}>{l}</span>
-              <span style={{ fontSize:12, fontWeight:600, fontFamily:"monospace", color:c }}>{v}</span>
+          {[["Annual fee", "$" + card.annualFee, "#f0f0f0"], ["Annual value", "~$" + Math.round(totalAnnual).toLocaleString(), "#8ecf8e"], ["Period available", "$" + total.toFixed(0), "#f0f0f0"], ["Period used", "$" + used.toFixed(2), "#8ecf8e"], ["Left on table", "$" + left.toFixed(0), left > 0 ? "#e8c76a" : "#8ecf8e"]].map(([l, v, c], i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+              <span style={{ fontSize: 11, color: "#888" }}>{l}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, fontFamily: "monospace", color: c }}>{v}</span>
             </div>
           ))}
         </div>
         {urgent.length > 0 && (
           <div style={sec}>
-            <div style={{ ...heading, color:"#e8c76a" }}>Expiring Soon</div>
+            <div style={{ ...heading, color: "#e8c76a" }}>Expiring Soon</div>
             {urgent.map(b => (
-              <div key={b.id} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0" }}>
-                <span style={{ fontSize:11, color:"#ccc" }}>{b.name} — ${(b.value-(b.usedAmount||0)).toFixed(2)} left</span>
-                <span style={{ fontSize:12, fontWeight:700, fontFamily:"monospace", color:"#e87c7c" }}>{getDaysUntilReset(b.period)}d</span>
+              <div key={b.id} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0" }}>
+                <span style={{ fontSize: 11, color: "#ccc" }}>{b.name} — ${(b.value - (b.usedAmount || 0)).toFixed(2)} left</span>
+                <span style={{ fontSize: 12, fontWeight: 700, fontFamily: "monospace", color: "#e87c7c" }}>{getDaysUntilReset(b.period)}d</span>
               </div>
             ))}
           </div>
         )}
         {needsEnroll.length > 0 && (
           <div style={sec}>
-            <div style={{ ...heading, color:"#e87c7c" }}>Not Enrolled ({needsEnroll.length})</div>
+            <div style={{ ...heading, color: "#e87c7c" }}>Not Enrolled ({needsEnroll.length})</div>
             {needsEnroll.map(b => (
-              <div key={b.id} style={{ padding:"4px 0" }}>
-                <div style={{ fontSize:11, fontWeight:600, color:"#ccc" }}>{b.name}{b.value>0?" ($"+b.value+getPeriodLabel(b.period)+")":""}</div>
-                <div style={{ fontSize:10, color:"#666" }}>{b.enrollAction}</div>
+              <div key={b.id} style={{ padding: "4px 0" }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "#ccc" }}>{b.name}{b.value > 0 ? " ($" + b.value + getPeriodLabel(b.period) + ")" : ""}</div>
+                <div style={{ fontSize: 10, color: "#666" }}>{b.enrollAction}</div>
               </div>
             ))}
           </div>
@@ -331,44 +376,99 @@ function MonthlyReport({ card, email, onClose }) {
         <div style={sec}>
           <div style={heading}>Credit Progress</div>
           {credits.map(b => {
-            const pct = b.value>0 ? Math.min(100, Math.round(((b.usedAmount||0)/b.value)*100)) : 0;
+            const pct = b.value > 0 ? Math.min(100, Math.round(((b.usedAmount || 0) / b.value) * 100)) : 0;
             return (
-              <div key={b.id} style={{ marginBottom:6 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:2 }}>
-                  <span style={{ fontSize:10, color:"#999" }}>{b.name}</span>
-                  <span style={{ fontSize:9, fontFamily:"monospace", color:"#666" }}>${(b.usedAmount||0).toFixed(2)} / ${b.value}</span>
+              <div key={b.id} style={{ marginBottom: 6 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
+                  <span style={{ fontSize: 10, color: "#999" }}>{b.name}</span>
+                  <span style={{ fontSize: 9, fontFamily: "monospace", color: "#666" }}>${(b.usedAmount || 0).toFixed(2)} / ${b.value}</span>
                 </div>
-                <div style={{ height:3, background:"#1a1a1f", borderRadius:2, overflow:"hidden" }}>
-                  <div style={{ height:"100%", width:pct+"%", background:pct>=100?"#8ecf8e":pct>0?card.accent:"transparent", borderRadius:2 }} />
+                <div style={{ height: 3, background: "#1a1a1f", borderRadius: 2, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: pct + "%", background: pct >= 100 ? "#8ecf8e" : pct > 0 ? card.accent : "transparent", borderRadius: 2 }} />
                 </div>
               </div>
             );
           })}
         </div>
-        <div style={{ ...sec, borderBottom:"none" }}>
+        <div style={{ ...sec, borderBottom: "none" }}>
           <div style={heading}>Perk Status</div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {perks.map(b => (
-              <span key={b.id} style={{ fontSize:10, padding:"2px 7px", borderRadius:4, border:"1px solid", borderColor:b.used?"rgba(142,207,142,.2)":"#1e1e23", color:b.used?"#8ecf8e":"#555", background:b.used?"rgba(142,207,142,.05)":"transparent" }}>
-                {b.used?"+":"-"} {b.name}
+              <span key={b.id} style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, border: "1px solid", borderColor: b.used ? "rgba(142,207,142,.2)" : "#1e1e23", color: b.used ? "#8ecf8e" : "#555", background: b.used ? "rgba(142,207,142,.05)" : "transparent" }}>
+                {b.used ? "+" : "-"} {b.name}
               </span>
             ))}
           </div>
         </div>
-        <div style={{ padding:"12px 18px", fontSize:10, color:"#444", textAlign:"center" }}>
-          Preview of monthly email. In production this goes to {email || "your email"} on the 1st.
+        <div style={{ padding: "12px 18px", fontSize: 10, color: "#444", textAlign: "center" }}>
+          Preview of monthly email · sent to {email || "your email"} on the 1st
         </div>
       </div>
     </div>
   );
 }
 
+function CardPicker({ available, onAdd, onClose }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.88)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: "#131316", borderRadius: 14, border: "1px solid #2a2a30", width: "100%", maxWidth: 400 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 18px", borderBottom: "1px solid #1e1e23" }}>
+          <span style={{ fontSize: 15, fontWeight: 700, color: "#f0f0f0" }}>Add a Card</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#555", fontSize: 18, cursor: "pointer", padding: 4 }}>×</button>
+        </div>
+        {available.length === 0 ? (
+          <div style={{ padding: "28px 18px", textAlign: "center", color: "#555", fontSize: 13 }}>All available cards are in your wallet.</div>
+        ) : (
+          <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+            {available.map(card => {
+              const creditCount = card.benefits.filter(b => b.value > 0).length;
+              const totalVal = card.benefits.filter(b => b.value > 0).reduce((s, b) => s + annualize(b.value, b.period), 0);
+              return (
+                <div key={card.id} style={{ background: "#0e0e11", borderRadius: 10, border: "1px solid #1e1e23", padding: "14px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                    <div style={{ width: 32, height: 20, borderRadius: 3, background: card.gradient, flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#f0f0f0" }}>{card.name}</div>
+                      <div style={{ fontSize: 10, color: "#555" }}>{card.issuer} · ${card.annualFee}/yr annual fee</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#888", marginBottom: 10 }}>{card.tagline}</div>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                    <div style={{ background: "#151518", borderRadius: 5, padding: "5px 8px", flex: 1, textAlign: "center" }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "monospace", color: "#8ecf8e" }}>~${Math.round(totalVal).toLocaleString()}</div>
+                      <div style={{ fontSize: 8, color: "#555", textTransform: "uppercase" }}>Annual value</div>
+                    </div>
+                    <div style={{ background: "#151518", borderRadius: 5, padding: "5px 8px", flex: 1, textAlign: "center" }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "monospace", color: card.accent }}>{card.benefits.length}</div>
+                      <div style={{ fontSize: 8, color: "#555", textTransform: "uppercase" }}>Benefits</div>
+                    </div>
+                    <div style={{ background: "#151518", borderRadius: 5, padding: "5px 8px", flex: 1, textAlign: "center" }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "monospace", color: "#f0f0f0" }}>{creditCount}</div>
+                      <div style={{ fontSize: 8, color: "#555", textTransform: "uppercase" }}>Credits</div>
+                    </div>
+                  </div>
+                  <button onClick={() => onAdd(card.id)} style={{ width: "100%", background: "rgba(" + card.accentAlpha + ",.15)", color: card.accent, border: "1px solid rgba(" + card.accentAlpha + ",.25)", borderRadius: 7, padding: "9px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                    + Add to Wallet
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AmexCoach() {
+  const [addedCardIds, setAddedCardIds] = useState([]);
+  const [benefitData, setBenefitData] = useState({});
   const [email, setEmail] = useState(null);
   const [emailInput, setEmailInput] = useState("");
-  const [cards, setCards] = useState(null);
-  const [activeId, setActiveId] = useState("amex-platinum");
+  const [emailStatus, setEmailStatus] = useState(null);
+  const [activeId, setActiveId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showPicker, setShowPicker] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [activeTab, setActiveTab] = useState("guide");
   const [filter, setFilter] = useState("all");
@@ -379,62 +479,131 @@ export default function AmexCoach() {
   const flash = useCallback((m) => { setToast(m); setTimeout(() => setToast(null), 2200); }, []);
 
   useEffect(() => {
-    try { const r = localStorage.getItem(SK_EMAIL); if (r) setEmail(r); } catch (e) {}
-    const c = loadInitialCards();
-    setCards(c);
-    try { localStorage.setItem(MULTI_SK, JSON.stringify(c)); } catch (e) {}
+    const s = loadState();
+    setAddedCardIds(s.addedCardIds);
+    setBenefitData(s.benefits);
+    setEmail(s.email);
+    setActiveId(s.addedCardIds[0] || null);
     setLoading(false);
   }, []);
 
-  const save = useCallback((c) => { try { localStorage.setItem(MULTI_SK, JSON.stringify(c)); } catch (e) {} }, []);
+  const saveAll = useCallback((ids, bdata, em) => {
+    persist({ addedCardIds: ids, benefits: bdata, email: em });
+  }, []);
+
+  const addedCards = CARD_LIBRARY
+    .filter(c => addedCardIds.includes(c.id))
+    .map(c => ({ ...c, benefits: mergeBenefits(c.benefits, benefitData[c.id]) }));
+
+  const availableCards = CARD_LIBRARY.filter(c => !addedCardIds.includes(c.id));
+
+  const activeCard = addedCards.find(c => c.id === activeId) || addedCards[0] || null;
 
   const switchCard = (id) => { setActiveId(id); setExpandedId(null); setFilter("all"); setShowAnalysis(false); };
 
-  const submitEmail = () => {
-    const e = emailInput.trim();
-    if (!e || e.indexOf("@") === -1) return;
-    setEmail(e);
-    try { localStorage.setItem(SK_EMAIL, e); } catch (err) {}
-    flash("Welcome!");
+  const addCard = (cardId) => {
+    const newIds = [...addedCardIds, cardId];
+    setAddedCardIds(newIds);
+    setActiveId(cardId);
+    setShowPicker(false);
+    saveAll(newIds, benefitData, email);
+    flash("Card added!");
+  };
+
+  const removeCard = (cardId) => {
+    if (!window.confirm("Remove this card from your wallet? Your tracked data will be lost.")) return;
+    const newIds = addedCardIds.filter(id => id !== cardId);
+    const newBenefits = { ...benefitData };
+    delete newBenefits[cardId];
+    setAddedCardIds(newIds);
+    setBenefitData(newBenefits);
+    setActiveId(newIds[0] || null);
+    setExpandedId(null);
+    setFilter("all");
+    setShowAnalysis(false);
+    saveAll(newIds, newBenefits, email);
+    flash("Card removed");
   };
 
   const updateBenefit = (cardId, benefitId, u) => {
-    const c = cards.map(card => card.id === cardId
-      ? { ...card, benefits: card.benefits.map(b => b.id === benefitId ? { ...b, ...u } : b) }
-      : card);
-    setCards(c);
-    save(c);
+    const card = addedCards.find(c => c.id === cardId);
+    if (!card) return;
+    const newBenefits = card.benefits.map(b => b.id === benefitId ? { ...b, ...u } : b);
+    const newBenefitData = { ...benefitData, [cardId]: newBenefits };
+    setBenefitData(newBenefitData);
+    saveAll(addedCardIds, newBenefitData, email);
   };
 
-  if (loading || !cards) return <div style={{ display:"flex", justifyContent:"center", alignItems:"center", minHeight:"50vh", color:"#666" }}>Loading...</div>;
+  const subscribeEmail = async () => {
+    const e = emailInput.trim();
+    if (!e || !e.includes("@")) return;
+    setEmailStatus("sending");
+    try {
+      const res = await fetch(API_URL + "/api/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: e }),
+      });
+      if (res.ok) {
+        setEmail(e);
+        setEmailInput("");
+        setEmailStatus("done");
+        saveAll(addedCardIds, benefitData, e);
+        flash("Subscribed! Monthly reports coming your way.");
+      } else {
+        setEmailStatus("error");
+      }
+    } catch {
+      setEmailStatus("error");
+    }
+  };
 
-  if (!email) {
+  if (loading) return <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", color: "#666", background: "#0e0e11" }}>Loading...</div>;
+
+  // Empty wallet — show card library
+  if (addedCards.length === 0) {
     return (
-      <div style={{ fontFamily:"system-ui,sans-serif", background:"#0e0e11", minHeight:"100vh", color:"#e0e0e0", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-        <div style={{ textAlign:"center", maxWidth:480 }}>
-          <div style={{ display:"flex", gap:8, justifyContent:"center", marginBottom:24 }}>
-            <div style={{ width:44, height:29, borderRadius:4, background:"linear-gradient(135deg,#c9a96e,#e8d5a8,#c9a96e)" }} />
-            <div style={{ width:44, height:29, borderRadius:4, background:"linear-gradient(135deg,#0a1628,#4a7fc1,#1a3a6b)" }} />
+      <div style={{ fontFamily: "system-ui,sans-serif", background: "#0e0e11", minHeight: "100vh", color: "#e0e0e0", padding: "40px 16px" }}>
+        <div style={{ maxWidth: 480, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 36 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: "#f0f0f0", marginBottom: 8 }}>Credit Card Benefits Coach</div>
+            <div style={{ fontSize: 13, color: "#666", lineHeight: 1.6 }}>Add the cards you have to start tracking your benefits, credits, and ROI.</div>
           </div>
-          <h1 style={{ fontSize:28, fontWeight:700, lineHeight:1.2, marginBottom:12 }}>Multi-Card Benefits Coach</h1>
-          <p style={{ fontSize:13, color:"#888", lineHeight:1.7, marginBottom:24 }}>Track every credit across your Amex Platinum and Chase Sapphire Preferred. Get enrollment guides, avoid pitfalls, and see your combined portfolio ROI.</p>
-          <div style={{ display:"flex", gap:16, justifyContent:"center", marginBottom:28, flexWrap:"wrap" }}>
-            {[["2","cards tracked"],["32","total benefits"],["$4,100+","combined value"],["Monthly","reports"]].map(([v,l],i) => (
-              <div key={i}><div style={{ fontSize:20, fontWeight:700, color:"#c9a96e", fontFamily:"monospace" }}>{v}</div><div style={{ fontSize:10, color:"#555" }}>{l}</div></div>
-            ))}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {CARD_LIBRARY.map(card => {
+              const creditCount = card.benefits.filter(b => b.value > 0).length;
+              const totalVal = card.benefits.filter(b => b.value > 0).reduce((s, b) => s + annualize(b.value, b.period), 0);
+              return (
+                <div key={card.id} style={{ background: "#151518", borderRadius: 12, border: "1px solid #1e1e23", padding: "18px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                    <div style={{ width: 40, height: 26, borderRadius: 4, background: card.gradient, flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: "#f0f0f0" }}>{card.name}</div>
+                      <div style={{ fontSize: 11, color: "#555" }}>{card.issuer} · ${card.annualFee}/yr</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12, color: "#888", marginBottom: 14, lineHeight: 1.5 }}>{card.tagline}</div>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+                    {[["~$" + Math.round(totalVal).toLocaleString(), "Annual value", "#8ecf8e"], [card.benefits.length + "", "Benefits", card.accent], [creditCount + "", "Credits", "#f0f0f0"]].map(([v, l, c], i) => (
+                      <div key={i} style={{ flex: 1, background: "#0e0e11", borderRadius: 6, padding: "8px", textAlign: "center" }}>
+                        <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "monospace", color: c }}>{v}</div>
+                        <div style={{ fontSize: 8, color: "#444", textTransform: "uppercase", marginTop: 2 }}>{l}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={() => addCard(card.id)} style={{ width: "100%", background: "rgba(" + card.accentAlpha + ",.15)", color: card.accent, border: "1px solid rgba(" + card.accentAlpha + ",.25)", borderRadius: 8, padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                    + Add to Wallet
+                  </button>
+                </div>
+              );
+            })}
           </div>
-          <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"center" }}>
-            <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)} onKeyDown={e => { if(e.key==="Enter") submitEmail(); }}
-              placeholder="Enter your email" style={{ flex:1, minWidth:180, background:"#151518", border:"1px solid #2a2a30", borderRadius:8, color:"#e0e0e0", padding:"12px 14px", fontSize:13, fontFamily:"inherit", outline:"none" }} />
-            <button onClick={submitEmail} style={{ background:"linear-gradient(135deg,#c9a96e,#a8893a)", color:"#111", border:"none", borderRadius:8, padding:"12px 20px", fontSize:13, fontWeight:600, cursor:"pointer" }}>Start Tracking</button>
-          </div>
-          <p style={{ fontSize:10, color:"#444", marginTop:12 }}>Free. Monthly reminders to your email.</p>
         </div>
       </div>
     );
   }
 
-  const activeCard = cards.find(c => c.id === activeId) || cards[0];
+  // Full tracker UI
   const accent = activeCard.accent;
   const accentA = activeCard.accentAlpha;
   const credits = activeCard.benefits.filter(b => b.value > 0);
@@ -442,85 +611,111 @@ export default function AmexCoach() {
   const perkValues = PERK_VALUES[activeCard.id] || {};
   const filtered = filter === "all" ? activeCard.benefits : filter === "credits" ? credits : perks;
   const needsEnroll = activeCard.benefits.filter(b => b.enrollReq && !b.enrolled);
-  const totalAnnual = credits.reduce((s,b) => s + annualize(b.value, b.period), 0);
-  const currentUsed = credits.reduce((s,b) => s + (b.usedAmount||0), 0);
-  const currentTotal = credits.reduce((s,b) => s + b.value, 0);
+  const totalAnnual = credits.reduce((s, b) => s + annualize(b.value, b.period), 0);
+  const currentUsed = credits.reduce((s, b) => s + (b.usedAmount || 0), 0);
+  const currentTotal = credits.reduce((s, b) => s + b.value, 0);
   const enrolledCount = activeCard.benefits.filter(b => b.enrolled || !b.enrollReq).length;
 
-  const portfolio = cards.reduce((acc, card) => {
+  const portfolio = addedCards.reduce((acc, card) => {
     const cc = card.benefits.filter(b => b.value > 0);
     acc.fees += card.annualFee;
-    acc.value += cc.reduce((s,b) => s + annualize(b.value, b.period), 0);
-    acc.redeemed += cc.reduce((s,b) => s + (b.usedAmount||0), 0);
+    acc.value += cc.reduce((s, b) => s + annualize(b.value, b.period), 0);
+    acc.redeemed += cc.reduce((s, b) => s + (b.usedAmount || 0), 0);
     return acc;
   }, { fees: 0, value: 0, redeemed: 0 });
   portfolio.net = portfolio.redeemed - portfolio.fees;
-  portfolio.util = portfolio.value > 0 ? Math.round((portfolio.redeemed / portfolio.value) * 100) : 0;
 
   return (
-    <div style={{ fontFamily:"system-ui,sans-serif", background:"#0e0e11", minHeight:"100vh", color:"#e0e0e0", padding:"16px 14px 44px", maxWidth:700, margin:"0 auto" }}>
+    <div style={{ fontFamily: "system-ui,sans-serif", background: "#0e0e11", minHeight: "100vh", color: "#e0e0e0", padding: "16px 14px 44px", maxWidth: 700, margin: "0 auto" }}>
 
       {/* Portfolio Dashboard */}
-      <div style={{ background:"#151518", borderRadius:10, border:"1px solid #1e1e23", padding:"12px 14px", marginBottom:10 }}>
-        <div style={{ fontSize:8, color:"#555", textTransform:"uppercase", letterSpacing:1, marginBottom:8, fontWeight:600 }}>Portfolio Summary</div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6 }}>
+      <div style={{ background: "#151518", borderRadius: 10, border: "1px solid #1e1e23", padding: "12px 14px", marginBottom: 10 }}>
+        <div style={{ fontSize: 8, color: "#555", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8, fontWeight: 600 }}>Portfolio Summary</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6, marginBottom: 12 }}>
           {[
-            ["Combined Fees","$"+portfolio.fees.toLocaleString(),"#aaa"],
-            ["Total Value","~$"+Math.round(portfolio.value).toLocaleString(),"#8ecf8e"],
-            ["Redeemed","$"+portfolio.redeemed.toFixed(0),"#e0e0e0"],
-            ["Net Value",portfolio.net>=0?"$"+portfolio.net.toFixed(0):"-$"+Math.abs(portfolio.net).toFixed(0),portfolio.net>=0?"#8ecf8e":"#e87c7c"],
-          ].map(([l,v,c],i) => (
-            <div key={i} style={{ background:"#0e0e11", borderRadius:6, padding:"8px" }}>
-              <div style={{ fontSize:7, color:"#555", textTransform:"uppercase", marginBottom:3 }}>{l}</div>
-              <div style={{ fontSize:13, fontWeight:700, fontFamily:"monospace", color:c }}>{v}</div>
+            ["Combined Fees", "$" + portfolio.fees.toLocaleString(), "#aaa"],
+            ["Total Value", "~$" + Math.round(portfolio.value).toLocaleString(), "#8ecf8e"],
+            ["Redeemed", "$" + portfolio.redeemed.toFixed(0), "#e0e0e0"],
+            ["Net Value", portfolio.net >= 0 ? "$" + portfolio.net.toFixed(0) : "-$" + Math.abs(portfolio.net).toFixed(0), portfolio.net >= 0 ? "#8ecf8e" : "#e87c7c"],
+          ].map(([l, v, c], i) => (
+            <div key={i} style={{ background: "#0e0e11", borderRadius: 6, padding: "8px" }}>
+              <div style={{ fontSize: 7, color: "#555", textTransform: "uppercase", marginBottom: 3 }}>{l}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "monospace", color: c }}>{v}</div>
             </div>
           ))}
         </div>
+        {/* Email signup row */}
+        <div style={{ borderTop: "1px solid #1a1a1f", paddingTop: 10 }}>
+          {email ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 9, color: "#8ecf8e" }}>✓</span>
+              <span style={{ fontSize: 10, color: "#555" }}>Monthly reports → {email}</span>
+              <button onClick={() => { setEmail(null); saveAll(addedCardIds, benefitData, null); }} style={{ marginLeft: "auto", background: "none", border: "none", color: "#333", fontSize: 10, cursor: "pointer", padding: "2px 4px" }}>change</button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <span style={{ fontSize: 10, color: "#555", whiteSpace: "nowrap" }}>Monthly reports:</span>
+              <input type="email" value={emailInput} onChange={e => { setEmailInput(e.target.value); setEmailStatus(null); }} onKeyDown={e => e.key === "Enter" && subscribeEmail()}
+                placeholder="your@email.com"
+                style={{ flex: 1, minWidth: 0, background: "#0e0e11", border: "1px solid #2a2a30", borderRadius: 5, color: "#e0e0e0", padding: "5px 8px", fontSize: 11, fontFamily: "inherit", outline: "none" }} />
+              <button onClick={subscribeEmail} disabled={emailStatus === "sending"}
+                style={{ background: "#1e2830", color: "#8ecf8e", border: "1px solid #2a3a30", borderRadius: 5, padding: "5px 10px", fontSize: 10, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                {emailStatus === "sending" ? "..." : emailStatus === "error" ? "Retry" : "Subscribe"}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Card Tabs */}
-      <div style={{ display:"flex", gap:6, marginBottom:10 }}>
-        {cards.map(card => {
+      {/* Card Tabs + Add button */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        {addedCards.map(card => {
           const isActive = card.id === activeId;
           const v = cardVerdict(card);
           const cardCredits = card.benefits.filter(b => b.value > 0);
-          const cardUsed = cardCredits.reduce((s,b) => s + (b.usedAmount||0), 0);
-          const cardTotal = cardCredits.reduce((s,b) => s + annualize(b.value,b.period), 0);
+          const cardUsed = cardCredits.reduce((s, b) => s + (b.usedAmount || 0), 0);
+          const cardTotal = cardCredits.reduce((s, b) => s + annualize(b.value, b.period), 0);
           const util = cardTotal > 0 ? Math.round((cardUsed / cardTotal) * 100) : 0;
           return (
-            <button key={card.id} onClick={() => switchCard(card.id)} style={{ flex:1, background:isActive?"#151518":"#0e0e11", border:"1px solid", borderColor:isActive?card.accent+"55":"#1e1e23", borderRadius:9, padding:"10px 10px", cursor:"pointer", textAlign:"left", transition:"all .15s" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:5 }}>
-                <div style={{ width:22, height:14, borderRadius:2, background:card.gradient, flexShrink:0 }} />
-                <span style={{ fontSize:11, fontWeight:700, color:isActive?card.accent:"#888", lineHeight:1.2 }}>{card.shortName}</span>
+            <button key={card.id} onClick={() => switchCard(card.id)} style={{ flex: 1, background: isActive ? "#151518" : "#0e0e11", border: "1px solid", borderColor: isActive ? card.accent + "55" : "#1e1e23", borderRadius: 9, padding: "10px", cursor: "pointer", textAlign: "left", transition: "all .15s" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
+                <div style={{ width: 22, height: 14, borderRadius: 2, background: card.gradient, flexShrink: 0 }} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: isActive ? card.accent : "#888", lineHeight: 1.2 }}>{card.shortName}</span>
               </div>
-              <div style={{ fontSize:9, color:"#555", marginBottom:4 }}>${card.annualFee}/yr fee</div>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <span style={{ fontSize:9, color:"#555" }}>{util}% used</span>
-                <span style={{ fontSize:8, fontWeight:700, color:v.color }}>{v.label}</span>
+              <div style={{ fontSize: 9, color: "#555", marginBottom: 4 }}>${card.annualFee}/yr fee</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 9, color: "#555" }}>{util}% used</span>
+                <span style={{ fontSize: 8, fontWeight: 700, color: v.color }}>{v.label}</span>
               </div>
             </button>
           );
         })}
+        {availableCards.length > 0 && (
+          <button onClick={() => setShowPicker(true)} style={{ width: 44, flexShrink: 0, background: "#0e0e11", border: "1px dashed #2a2a30", borderRadius: 9, cursor: "pointer", color: "#444", fontSize: 20, display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+        )}
       </div>
 
       {/* Active Card Header */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10, padding:"12px 14px", background:"#151518", borderRadius:10, border:"1px solid #1e1e23" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <div style={{ width:28, height:18, borderRadius:3, background:activeCard.gradient }} />
-          <div>
-            <div style={{ fontSize:14, fontWeight:700, color:"#f0f0f0" }}>{activeCard.name}</div>
-            <div style={{ fontSize:9, color:"#555" }}>{activeCard.issuer} · ${activeCard.annualFee}/yr</div>
+      <div style={{ background: "#151518", borderRadius: 10, border: "1px solid #1e1e23", padding: "12px 14px", marginBottom: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ width: 28, height: 18, borderRadius: 3, background: activeCard.gradient }} />
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#f0f0f0" }}>{activeCard.name}</div>
+              <div style={{ fontSize: 9, color: "#555" }}>{activeCard.issuer} · ${activeCard.annualFee}/yr</div>
+            </div>
           </div>
-        </div>
-        <div style={{ display:"flex", gap:5 }}>
-          <button onClick={() => setShowAnalysis(!showAnalysis)} style={{ background:showAnalysis?"rgba(142,207,142,.12)":"rgba(255,255,255,.05)", color:showAnalysis?"#8ecf8e":"#888", border:"1px solid", borderColor:showAnalysis?"rgba(142,207,142,.2)":"#1e1e23", borderRadius:7, padding:"6px 10px", fontSize:10, fontWeight:600, cursor:"pointer" }}>Keep or Cancel?</button>
-          <button onClick={() => setShowReport(true)} style={{ background:"rgba("+accentA+",.1)", color:accent, border:"1px solid rgba("+accentA+",.2)", borderRadius:7, padding:"6px 10px", fontSize:10, fontWeight:600, cursor:"pointer" }}>Report</button>
+          <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+            <button onClick={() => setShowAnalysis(!showAnalysis)} style={{ background: showAnalysis ? "rgba(142,207,142,.12)" : "rgba(255,255,255,.05)", color: showAnalysis ? "#8ecf8e" : "#888", border: "1px solid", borderColor: showAnalysis ? "rgba(142,207,142,.2)" : "#1e1e23", borderRadius: 7, padding: "6px 10px", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Keep or Cancel?</button>
+            <button onClick={() => setShowReport(true)} style={{ background: "rgba(" + accentA + ",.1)", color: accent, border: "1px solid rgba(" + accentA + ",.2)", borderRadius: 7, padding: "6px 10px", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Report</button>
+            <button onClick={() => removeCard(activeCard.id)} style={{ background: "none", border: "none", color: "#2a2a2a", fontSize: 10, cursor: "pointer", padding: "6px 4px" }} title="Remove card">×</button>
+          </div>
         </div>
       </div>
 
       {/* Enrollment Warning */}
       {needsEnroll.length > 0 && (
-        <div style={{ display:"flex", gap:7, alignItems:"center", background:"rgba(232,180,80,.05)", border:"1px solid rgba(232,180,80,.12)", borderRadius:8, padding:"9px 11px", marginBottom:10, fontSize:11, color:"#b89930" }}>
+        <div style={{ display: "flex", gap: 7, alignItems: "center", background: "rgba(232,180,80,.05)", border: "1px solid rgba(232,180,80,.12)", borderRadius: 8, padding: "9px 11px", marginBottom: 10, fontSize: 11, color: "#b89930" }}>
           {needsEnroll.length} benefit{needsEnroll.length !== 1 ? "s" : ""} not enrolled — you are missing credits.
         </div>
       )}
@@ -528,67 +723,67 @@ export default function AmexCoach() {
       {/* Keep or Cancel Analysis */}
       {showAnalysis && (() => {
         const now = new Date();
-        const frac = (Math.floor((now - new Date(now.getFullYear(),0,1)) / 864e5) + 1) / 365;
+        const frac = (Math.floor((now - new Date(now.getFullYear(), 0, 1)) / 864e5) + 1) / 365;
         const mo = now.getMonth() + 1;
-        const redeemed = credits.reduce((s,b) => s + (b.usedAmount||0), 0);
-        const perkVal = perks.reduce((s,b) => s + (b.used ? (perkValues[b.id]||0) : 0), 0);
+        const redeemed = credits.reduce((s, b) => s + (b.usedAmount || 0), 0);
+        const perkVal = perks.reduce((s, b) => s + (b.used ? (perkValues[b.id] || 0) : 0), 0);
         const proj = Math.round(frac > 0 ? redeemed / frac : 0) + perkVal;
         const maxPoss = Math.round(totalAnnual);
-        const feePct = Math.min(100, Math.round(((redeemed+perkVal) / activeCard.annualFee) * 100));
+        const feePct = Math.min(100, Math.round(((redeemed + perkVal) / activeCard.annualFee) * 100));
         const projPct = Math.min(100, Math.round((proj / activeCard.annualFee) * 100));
         const usedPerks = perks.filter(b => b.used).length;
 
         let verdict, vColor, vBg, reasons;
         if (feePct >= 100) {
           verdict = "KEEP — Already Paid For Itself"; vColor = "#8ecf8e"; vBg = "rgba(142,207,142,.08)";
-          reasons = ["You have already recouped the $"+activeCard.annualFee+" annual fee.", "Every additional benefit you use is pure profit."];
+          reasons = ["You have already recouped the $" + activeCard.annualFee + " annual fee.", "Every additional benefit you use is pure profit."];
         } else if (projPct >= 100) {
           verdict = "KEEP — On Track to Break Even"; vColor = "#c9a96e"; vBg = "rgba(201,169,110,.06)";
-          reasons = ["At your current pace, you will exceed the $"+activeCard.annualFee+" fee by year-end.", "Focus on maximizing credits to stay on track."];
+          reasons = ["At your current pace, you will exceed the $" + activeCard.annualFee + " fee by year-end.", "Focus on maximizing credits to stay on track."];
         } else if (projPct >= 70) {
           verdict = "BORDERLINE — Close But Not There Yet"; vColor = "#e8c76a"; vBg = "rgba(232,180,80,.06)";
-          reasons = ["You are projected to recoup ~"+projPct+"% of the $"+activeCard.annualFee+" fee.", "Enrolling in more benefits or using more perks could push you over."];
+          reasons = ["You are projected to recoup ~" + projPct + "% of the $" + activeCard.annualFee + " fee.", "Enrolling in more benefits or using more perks could push you over."];
         } else {
           verdict = "CONSIDER CANCELLING"; vColor = "#e87c7c"; vBg = "rgba(232,124,124,.06)";
-          reasons = ["You are on pace to recoup only ~"+projPct+"% of the $"+activeCard.annualFee+" fee.", "Review unenrolled benefits — there may be easy value you are missing."];
+          reasons = ["You are on pace to recoup only ~" + projPct + "% of the $" + activeCard.annualFee + " fee.", "Review unenrolled benefits — there may be easy value you are missing."];
         }
-        if (needsEnroll.length > 3) reasons.push(needsEnroll.length+" benefits still not enrolled. Enrolling could significantly increase your return.");
-        if (usedPerks < Math.floor(perks.length / 2)) reasons.push("Only "+usedPerks+" of "+perks.length+" perks activated. Mark them as you use them to improve your score.");
+        if (needsEnroll.length > 3) reasons.push(needsEnroll.length + " benefits still not enrolled. Enrolling could significantly increase your return.");
+        if (usedPerks < Math.floor(perks.length / 2)) reasons.push("Only " + usedPerks + " of " + perks.length + " perks activated. Mark them as you use them to improve your score.");
 
         return (
-          <div style={{ background:"#151518", borderRadius:10, border:"1px solid #1e1e23", padding:"16px 14px", marginBottom:10 }}>
-            <div style={{ background:vBg, border:"1px solid", borderColor:vColor+"33", borderRadius:8, padding:"12px 14px", marginBottom:14, textAlign:"center" }}>
-              <div style={{ fontSize:14, fontWeight:700, color:vColor, marginBottom:4 }}>{verdict}</div>
-              <div style={{ fontSize:11, color:"#888" }}>Based on {mo} months of tracking · {activeCard.name}</div>
+          <div style={{ background: "#151518", borderRadius: 10, border: "1px solid #1e1e23", padding: "16px 14px", marginBottom: 10 }}>
+            <div style={{ background: vBg, border: "1px solid", borderColor: vColor + "33", borderRadius: 8, padding: "12px 14px", marginBottom: 14, textAlign: "center" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: vColor, marginBottom: 4 }}>{verdict}</div>
+              <div style={{ fontSize: 11, color: "#888" }}>Based on {mo} months of tracking · {activeCard.name}</div>
             </div>
-            <div style={{ marginBottom:14 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                <span style={{ fontSize:11, color:"#999" }}>Fee Recovery</span>
-                <span style={{ fontSize:12, fontWeight:700, fontFamily:"monospace", color:feePct>=100?"#8ecf8e":"#f0f0f0" }}>{feePct}%</span>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: 11, color: "#999" }}>Fee Recovery</span>
+                <span style={{ fontSize: 12, fontWeight: 700, fontFamily: "monospace", color: feePct >= 100 ? "#8ecf8e" : "#f0f0f0" }}>{feePct}%</span>
               </div>
-              <div style={{ height:8, background:"#0e0e11", borderRadius:4, overflow:"hidden", position:"relative" }}>
-                <div style={{ position:"absolute", left:0, top:0, height:"100%", width:feePct+"%", background:feePct>=100?"#8ecf8e":feePct>=70?"#e8c76a":"#e87c7c", borderRadius:4 }} />
+              <div style={{ height: 8, background: "#0e0e11", borderRadius: 4, overflow: "hidden", position: "relative" }}>
+                <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: feePct + "%", background: feePct >= 100 ? "#8ecf8e" : feePct >= 70 ? "#e8c76a" : "#e87c7c", borderRadius: 4 }} />
               </div>
-              <div style={{ display:"flex", justifyContent:"space-between", marginTop:3 }}>
-                <span style={{ fontSize:9, color:"#555" }}>$0</span>
-                <span style={{ fontSize:9, color:"#555" }}>${activeCard.annualFee} fee</span>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
+                <span style={{ fontSize: 9, color: "#555" }}>$0</span>
+                <span style={{ fontSize: 9, color: "#555" }}>${activeCard.annualFee} fee</span>
               </div>
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:14 }}>
-              {[["Credits Redeemed","$"+redeemed.toFixed(0),"of ~$"+maxPoss.toLocaleString()+" possible/yr","#8ecf8e"],["Est. Perk Value","$"+perkVal,usedPerks+" of "+perks.length+" perks used",accent],["Total Realized","$"+(redeemed+perkVal).toFixed(0),"credits + est. perks",(redeemed+perkVal)>=activeCard.annualFee?"#8ecf8e":"#f0f0f0"],["Projected Annual","$"+proj.toFixed(0),"at current pace",proj>=activeCard.annualFee?"#8ecf8e":"#e8c76a"]].map(([l,v,sub,c],i) => (
-                <div key={i} style={{ background:"#0e0e11", borderRadius:6, padding:"10px" }}>
-                  <div style={{ fontSize:8, color:"#555", textTransform:"uppercase", marginBottom:3 }}>{l}</div>
-                  <div style={{ fontSize:18, fontWeight:700, fontFamily:"monospace", color:c }}>{v}</div>
-                  <div style={{ fontSize:9, color:"#555" }}>{sub}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+              {[["Credits Redeemed", "$" + redeemed.toFixed(0), "of ~$" + maxPoss.toLocaleString() + " possible/yr", "#8ecf8e"], ["Est. Perk Value", "$" + perkVal, usedPerks + " of " + perks.length + " perks used", accent], ["Total Realized", "$" + (redeemed + perkVal).toFixed(0), "credits + est. perks", (redeemed + perkVal) >= activeCard.annualFee ? "#8ecf8e" : "#f0f0f0"], ["Projected Annual", "$" + proj.toFixed(0), "at current pace", proj >= activeCard.annualFee ? "#8ecf8e" : "#e8c76a"]].map(([l, v, sub, c], i) => (
+                <div key={i} style={{ background: "#0e0e11", borderRadius: 6, padding: "10px" }}>
+                  <div style={{ fontSize: 8, color: "#555", textTransform: "uppercase", marginBottom: 3 }}>{l}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "monospace", color: c }}>{v}</div>
+                  <div style={{ fontSize: 9, color: "#555" }}>{sub}</div>
                 </div>
               ))}
             </div>
-            <div style={{ borderTop:"1px solid #1e1e23", paddingTop:10 }}>
-              <div style={{ fontSize:10, color:"#777", textTransform:"uppercase", marginBottom:6, fontWeight:600 }}>Key Factors</div>
-              {reasons.map((r,i) => (
-                <div key={i} style={{ display:"flex", gap:5, marginBottom:4 }}>
-                  <span style={{ color:vColor, fontSize:10, flexShrink:0 }}>-</span>
-                  <span style={{ fontSize:11, color:"#aaa", lineHeight:1.4 }}>{r}</span>
+            <div style={{ borderTop: "1px solid #1e1e23", paddingTop: 10 }}>
+              <div style={{ fontSize: 10, color: "#777", textTransform: "uppercase", marginBottom: 6, fontWeight: 600 }}>Key Factors</div>
+              {reasons.map((r, i) => (
+                <div key={i} style={{ display: "flex", gap: 5, marginBottom: 4 }}>
+                  <span style={{ color: vColor, fontSize: 10, flexShrink: 0 }}>-</span>
+                  <span style={{ fontSize: 11, color: "#aaa", lineHeight: 1.4 }}>{r}</span>
                 </div>
               ))}
             </div>
@@ -597,19 +792,19 @@ export default function AmexCoach() {
       })()}
 
       {/* Stats Grid */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:5, marginBottom:10 }}>
-        {[["Annual Value","~$"+Math.round(totalAnnual).toLocaleString(),"#8ecf8e"],["Period Used","$"+currentUsed.toFixed(0)+"/$"+currentTotal.toFixed(0),accent],["Enrolled",enrolledCount+"/"+activeCard.benefits.length,enrolledCount===activeCard.benefits.length?"#8ecf8e":"#e8c76a"]].map(([l,v,c],i) => (
-          <div key={i} style={{ background:"#151518", borderRadius:8, padding:"10px", border:"1px solid #1a1a1f" }}>
-            <div style={{ fontSize:8, color:"#555", textTransform:"uppercase", letterSpacing:".3px", marginBottom:3 }}>{l}</div>
-            <div style={{ fontSize:15, fontWeight:700, fontFamily:"monospace", color:c }}>{v}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 5, marginBottom: 10 }}>
+        {[["Annual Value", "~$" + Math.round(totalAnnual).toLocaleString(), "#8ecf8e"], ["Period Used", "$" + currentUsed.toFixed(0) + "/$" + currentTotal.toFixed(0), accent], ["Enrolled", enrolledCount + "/" + activeCard.benefits.length, enrolledCount === activeCard.benefits.length ? "#8ecf8e" : "#e8c76a"]].map(([l, v, c], i) => (
+          <div key={i} style={{ background: "#151518", borderRadius: 8, padding: "10px", border: "1px solid #1a1a1f" }}>
+            <div style={{ fontSize: 8, color: "#555", textTransform: "uppercase", letterSpacing: ".3px", marginBottom: 3 }}>{l}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "monospace", color: c }}>{v}</div>
           </div>
         ))}
       </div>
 
       {/* Filter Tabs */}
-      <div style={{ display:"flex", gap:4, marginBottom:8 }}>
-        {[["all","All ("+activeCard.benefits.length+")"],["credits","Credits ("+credits.length+")"],["perks","Perks ("+perks.length+")"]].map(([k,l]) => (
-          <button key={k} onClick={() => setFilter(k)} style={{ background:filter===k?"rgba("+accentA+",.08)":"transparent", color:filter===k?accent:"#555", border:"1px solid", borderColor:filter===k?"rgba("+accentA+",.2)":"#1a1a1f", borderRadius:5, padding:"3px 9px", fontSize:10, cursor:"pointer", fontFamily:"inherit" }}>{l}</button>
+      <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+        {[["all", "All (" + activeCard.benefits.length + ")"], ["credits", "Credits (" + credits.length + ")"], ["perks", "Perks (" + perks.length + ")"]].map(([k, l]) => (
+          <button key={k} onClick={() => setFilter(k)} style={{ background: filter === k ? "rgba(" + accentA + ",.08)" : "transparent", color: filter === k ? accent : "#555", border: "1px solid", borderColor: filter === k ? "rgba(" + accentA + ",.2)" : "#1a1a1f", borderRadius: 5, padding: "3px 9px", fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>{l}</button>
         ))}
       </div>
 
@@ -617,93 +812,93 @@ export default function AmexCoach() {
       {filtered.map(b => {
         const open = expandedId === b.id;
         const isPerk = b.value === 0;
-        const pct = isPerk ? (b.used?100:0) : (b.value>0 ? Math.min(100,Math.round(((b.usedAmount||0)/b.value)*100)) : 0);
+        const pct = isPerk ? (b.used ? 100 : 0) : (b.value > 0 ? Math.min(100, Math.round(((b.usedAmount || 0) / b.value) * 100)) : 0);
         const days = getDaysUntilReset(b.period);
         const done = isPerk ? b.used : pct >= 100;
         const needsE = b.enrollReq && !b.enrolled;
         const dot = done ? "#8ecf8e" : needsE ? "#e8c76a" : "#555";
 
         const toggleEnrolled = () => { updateBenefit(activeCard.id, b.id, { enrolled: !b.enrolled }); flash(b.enrolled ? "Unenrolled" : "Enrolled!"); };
-        const setUsedAmt = (amt) => { updateBenefit(activeCard.id, b.id, { usedAmount: Math.min(parseFloat(amt)||0, b.value), used: (parseFloat(amt)||0) > 0 }); };
+        const setUsedAmt = (amt) => { updateBenefit(activeCard.id, b.id, { usedAmount: Math.min(parseFloat(amt) || 0, b.value), used: (parseFloat(amt) || 0) > 0 }); };
         const markFull = () => { updateBenefit(activeCard.id, b.id, { usedAmount: b.value, used: true }); flash("Fully used!"); };
         const togglePerk = () => { updateBenefit(activeCard.id, b.id, { used: !b.used }); };
 
         return (
-          <div key={b.id} style={{ background:"#151518", borderRadius:9, border:"1px solid", borderColor:done?"rgba(142,207,142,.18)":needsE?"rgba(232,180,80,.12)":"#1e1e23", marginBottom:4, overflow:"hidden" }}>
-            <div onClick={() => { setExpandedId(open?null:b.id); setActiveTab("guide"); }} style={{ display:"flex", alignItems:"center", gap:7, padding:"10px 11px", cursor:"pointer" }}>
-              <div style={{ width:6, height:6, borderRadius:3, background:dot, flexShrink:0 }} />
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ fontSize:12, fontWeight:600, color:"#ddd", marginBottom:1 }}>{b.name}</div>
-                <div style={{ display:"flex", gap:3, flexWrap:"wrap", alignItems:"center" }}>
-                  <span style={{ fontSize:8, color:accent, background:"rgba("+accentA+",.07)", padding:"1px 5px", borderRadius:3 }}>{b.cat}</span>
-                  <span style={{ fontSize:8, color:"#555", background:"rgba(255,255,255,.03)", padding:"1px 5px", borderRadius:3 }}>{b.period}</span>
-                  {days != null && <span style={{ fontSize:8, color:days<=14?"#e87c7c":days<=30?"#e8c76a":"#555", background:"rgba(255,255,255,.03)", padding:"1px 5px", borderRadius:3 }}>{days}d</span>}
-                  {needsE && <span style={{ fontSize:7, color:"#e8c76a", background:"rgba(232,180,80,.1)", padding:"1px 5px", borderRadius:3, fontWeight:700 }}>NOT ENROLLED</span>}
+          <div key={b.id} style={{ background: "#151518", borderRadius: 9, border: "1px solid", borderColor: done ? "rgba(142,207,142,.18)" : needsE ? "rgba(232,180,80,.12)" : "#1e1e23", marginBottom: 4, overflow: "hidden" }}>
+            <div onClick={() => { setExpandedId(open ? null : b.id); setActiveTab("guide"); }} style={{ display: "flex", alignItems: "center", gap: 7, padding: "10px 11px", cursor: "pointer" }}>
+              <div style={{ width: 6, height: 6, borderRadius: 3, background: dot, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#ddd", marginBottom: 1 }}>{b.name}</div>
+                <div style={{ display: "flex", gap: 3, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ fontSize: 8, color: accent, background: "rgba(" + accentA + ",.07)", padding: "1px 5px", borderRadius: 3 }}>{b.cat}</span>
+                  <span style={{ fontSize: 8, color: "#555", background: "rgba(255,255,255,.03)", padding: "1px 5px", borderRadius: 3 }}>{b.period}</span>
+                  {days != null && <span style={{ fontSize: 8, color: days <= 14 ? "#e87c7c" : days <= 30 ? "#e8c76a" : "#555", background: "rgba(255,255,255,.03)", padding: "1px 5px", borderRadius: 3 }}>{days}d</span>}
+                  {needsE && <span style={{ fontSize: 7, color: "#e8c76a", background: "rgba(232,180,80,.1)", padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>NOT ENROLLED</span>}
                 </div>
               </div>
-              <div style={{ textAlign:"right" }}>
-                {isPerk ? <span style={{ fontSize:9, color:"#555" }}>Perk</span> : <span style={{ fontSize:13, fontWeight:700, fontFamily:"monospace", color:"#f0f0f0" }}>${b.value}<span style={{ fontSize:9, color:"#555", fontWeight:400 }}>{getPeriodLabel(b.period)}</span></span>}
-                <div style={{ fontSize:8, color:"#333", marginTop:1 }}>{open?"^":"v"}</div>
+              <div style={{ textAlign: "right" }}>
+                {isPerk ? <span style={{ fontSize: 9, color: "#555" }}>Perk</span> : <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "monospace", color: "#f0f0f0" }}>${b.value}<span style={{ fontSize: 9, color: "#555", fontWeight: 400 }}>{getPeriodLabel(b.period)}</span></span>}
+                <div style={{ fontSize: 8, color: "#333", marginTop: 1 }}>{open ? "^" : "v"}</div>
               </div>
             </div>
 
-            {!isPerk && <div style={{ height:2, background:"#1a1a1f", marginLeft:11, marginRight:11 }}><div style={{ height:"100%", width:pct+"%", background:pct>=100?"#8ecf8e":pct>0?accent:"transparent" }} /></div>}
+            {!isPerk && <div style={{ height: 2, background: "#1a1a1f", marginLeft: 11, marginRight: 11 }}><div style={{ height: "100%", width: pct + "%", background: pct >= 100 ? "#8ecf8e" : pct > 0 ? accent : "transparent" }} /></div>}
 
             {open && (
-              <div style={{ padding:"0 11px 12px" }}>
-                <p style={{ fontSize:12.5, fontWeight:600, color:accent, margin:"6px 0 8px", lineHeight:1.4 }}>{b.headline}</p>
-                <div style={{ display:"flex", gap:3, marginBottom:7, borderBottom:"1px solid #1a1a1f", paddingBottom:5 }}>
-                  {[["guide","How to Use"],["tips","Pro Tips"],["pitfalls","Pitfalls"]].map(([k,l]) => (
-                    <button key={k} onClick={() => setActiveTab(k)} style={{ background:activeTab===k?"rgba("+accentA+",.08)":"transparent", color:activeTab===k?accent:"#555", border:"none", padding:"3px 7px", fontSize:10, cursor:"pointer", borderRadius:4, fontFamily:"inherit" }}>{l}</button>
+              <div style={{ padding: "0 11px 12px" }}>
+                <p style={{ fontSize: 12.5, fontWeight: 600, color: accent, margin: "6px 0 8px", lineHeight: 1.4 }}>{b.headline}</p>
+                <div style={{ display: "flex", gap: 3, marginBottom: 7, borderBottom: "1px solid #1a1a1f", paddingBottom: 5 }}>
+                  {[["guide", "How to Use"], ["tips", "Pro Tips"], ["pitfalls", "Pitfalls"]].map(([k, l]) => (
+                    <button key={k} onClick={() => setActiveTab(k)} style={{ background: activeTab === k ? "rgba(" + accentA + ",.08)" : "transparent", color: activeTab === k ? accent : "#555", border: "none", padding: "3px 7px", fontSize: 10, cursor: "pointer", borderRadius: 4, fontFamily: "inherit" }}>{l}</button>
                   ))}
                 </div>
-                <div style={{ minHeight:40, marginBottom:8 }}>
+                <div style={{ minHeight: 40, marginBottom: 8 }}>
                   {activeTab === "guide" && (
                     <div>
-                      {b.howTo.map((s,i) => (
-                        <div key={i} style={{ display:"flex", gap:6, marginBottom:5 }}>
-                          <span style={{ width:16, height:16, borderRadius:8, background:"rgba("+accentA+",.1)", color:accent, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, flexShrink:0 }}>{i+1}</span>
-                          <span style={{ fontSize:11, color:"#bbb", lineHeight:1.5 }}>{s}</span>
+                      {b.howTo.map((s, i) => (
+                        <div key={i} style={{ display: "flex", gap: 6, marginBottom: 5 }}>
+                          <span style={{ width: 16, height: 16, borderRadius: 8, background: "rgba(" + accentA + ",.1)", color: accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
+                          <span style={{ fontSize: 11, color: "#bbb", lineHeight: 1.5 }}>{s}</span>
                         </div>
                       ))}
                       {b.enrollReq && (
-                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, background:"rgba("+accentA+",.04)", border:"1px solid rgba("+accentA+",.1)", borderRadius:6, padding:"8px 9px", marginTop:6, flexWrap:"wrap" }}>
-                          <div><div style={{ fontSize:9, color:accent, fontWeight:600 }}>ENROLLMENT</div><div style={{ fontSize:10, color:"#999" }}>{b.enrollAction}</div></div>
-                          <button onClick={(e) => { e.stopPropagation(); toggleEnrolled(); }} style={{ background:b.enrolled?"rgba(142,207,142,.12)":"rgba("+accentA+",.12)", color:b.enrolled?"#8ecf8e":accent, border:"none", borderRadius:5, padding:"4px 10px", fontSize:10, fontWeight:600, cursor:"pointer" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, background: "rgba(" + accentA + ",.04)", border: "1px solid rgba(" + accentA + ",.1)", borderRadius: 6, padding: "8px 9px", marginTop: 6, flexWrap: "wrap" }}>
+                          <div><div style={{ fontSize: 9, color: accent, fontWeight: 600 }}>ENROLLMENT</div><div style={{ fontSize: 10, color: "#999" }}>{b.enrollAction}</div></div>
+                          <button onClick={(e) => { e.stopPropagation(); toggleEnrolled(); }} style={{ background: b.enrolled ? "rgba(142,207,142,.12)" : "rgba(" + accentA + ",.12)", color: b.enrolled ? "#8ecf8e" : accent, border: "none", borderRadius: 5, padding: "4px 10px", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>
                             {b.enrolled ? "Enrolled" : "Mark Enrolled"}
                           </button>
                         </div>
                       )}
                     </div>
                   )}
-                  {activeTab === "tips" && b.tips.map((t,i) => (
-                    <div key={i} style={{ display:"flex", gap:5, marginBottom:5 }}>
-                      <span style={{ fontSize:10, flexShrink:0 }}>*</span>
-                      <span style={{ fontSize:11, color:"#a8d8a8", lineHeight:1.5 }}>{t}</span>
+                  {activeTab === "tips" && b.tips.map((t, i) => (
+                    <div key={i} style={{ display: "flex", gap: 5, marginBottom: 5 }}>
+                      <span style={{ fontSize: 10, flexShrink: 0 }}>*</span>
+                      <span style={{ fontSize: 11, color: "#a8d8a8", lineHeight: 1.5 }}>{t}</span>
                     </div>
                   ))}
-                  {activeTab === "pitfalls" && b.pitfalls.map((p,i) => (
-                    <div key={i} style={{ display:"flex", gap:5, marginBottom:5 }}>
-                      <span style={{ fontSize:10, flexShrink:0 }}>!</span>
-                      <span style={{ fontSize:11, color:"#e8c76a", lineHeight:1.5 }}>{p}</span>
+                  {activeTab === "pitfalls" && b.pitfalls.map((p, i) => (
+                    <div key={i} style={{ display: "flex", gap: 5, marginBottom: 5 }}>
+                      <span style={{ fontSize: 10, flexShrink: 0 }}>!</span>
+                      <span style={{ fontSize: 11, color: "#e8c76a", lineHeight: 1.5 }}>{p}</span>
                     </div>
                   ))}
                 </div>
-                <div style={{ borderTop:"1px solid #1a1a1f", paddingTop:7 }}>
+                <div style={{ borderTop: "1px solid #1a1a1f", paddingTop: 7 }}>
                   {isPerk ? (
-                    <button onClick={() => togglePerk()} style={{ width:"100%", border:"none", borderRadius:5, padding:"6px", fontSize:10, fontWeight:600, cursor:"pointer", background:b.used?"rgba(142,207,142,.1)":"rgba("+accentA+",.1)", color:b.used?"#8ecf8e":accent }}>
+                    <button onClick={() => togglePerk()} style={{ width: "100%", border: "none", borderRadius: 5, padding: "6px", fontSize: 10, fontWeight: 600, cursor: "pointer", background: b.used ? "rgba(142,207,142,.1)" : "rgba(" + accentA + ",.1)", color: b.used ? "#8ecf8e" : accent }}>
                       {b.used ? "Benefit Used" : "Mark as Used"}
                     </button>
                   ) : (
-                    <div style={{ display:"flex", alignItems:"center", gap:5 }}>
-                      <span style={{ fontSize:10, color:"#666" }}>Used:</span>
-                      <div style={{ display:"flex", alignItems:"center", gap:3, background:"#0e0e11", border:"1px solid #1a1a1f", borderRadius:4, padding:"3px 6px" }}>
-                        <span style={{ color:"#555", fontSize:11 }}>$</span>
-                        <input type="number" value={b.usedAmount||""} placeholder="0" min="0" max={b.value} step="0.01" onChange={e => setUsedAmt(e.target.value)}
-                          style={{ width:45, background:"transparent", border:"none", color:"#e0e0e0", fontSize:11, fontFamily:"monospace", textAlign:"right", outline:"none" }} />
-                        <span style={{ color:"#444", fontSize:10 }}>/ ${b.value}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <span style={{ fontSize: 10, color: "#666" }}>Used:</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 3, background: "#0e0e11", border: "1px solid #1a1a1f", borderRadius: 4, padding: "3px 6px" }}>
+                        <span style={{ color: "#555", fontSize: 11 }}>$</span>
+                        <input type="number" value={b.usedAmount || ""} placeholder="0" min="0" max={b.value} step="0.01" onChange={e => setUsedAmt(e.target.value)}
+                          style={{ width: 45, background: "transparent", border: "none", color: "#e0e0e0", fontSize: 11, fontFamily: "monospace", textAlign: "right", outline: "none" }} />
+                        <span style={{ color: "#444", fontSize: 10 }}>/ ${b.value}</span>
                       </div>
-                      <button onClick={() => markFull()} style={{ background:"rgba("+accentA+",.1)", color:accent, border:"none", borderRadius:3, padding:"3px 7px", fontSize:9, fontWeight:600, cursor:"pointer" }}>Max</button>
+                      <button onClick={() => markFull()} style={{ background: "rgba(" + accentA + ",.1)", color: accent, border: "none", borderRadius: 3, padding: "3px 7px", fontSize: 9, fontWeight: 600, cursor: "pointer" }}>Max</button>
                     </div>
                   )}
                 </div>
@@ -714,7 +909,8 @@ export default function AmexCoach() {
       })}
 
       {showReport && <MonthlyReport card={activeCard} email={email} onClose={() => setShowReport(false)} />}
-      {toast && <div style={{ position:"fixed", bottom:16, left:"50%", transform:"translateX(-50%)", background:"#222", color:"#e0e0e0", padding:"6px 14px", borderRadius:7, fontSize:11, border:"1px solid #333", zIndex:1100 }}>{toast}</div>}
+      {showPicker && <CardPicker available={availableCards} onAdd={addCard} onClose={() => setShowPicker(false)} />}
+      {toast && <div style={{ position: "fixed", bottom: 16, left: "50%", transform: "translateX(-50%)", background: "#222", color: "#e0e0e0", padding: "6px 14px", borderRadius: 7, fontSize: 11, border: "1px solid #333", zIndex: 1100 }}>{toast}</div>}
     </div>
   );
 }
