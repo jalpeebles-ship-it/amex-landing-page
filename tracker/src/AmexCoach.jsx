@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { supabase } from './supabaseClient';
 
 const MULTI_SK = "multi-card-tracker-v1";
 const OLD_SK   = "amex-coach-v5";
@@ -719,10 +720,20 @@ function CardPicker({ available, onAdd, onClose }) {
 }
 
 export default function AmexCoach() {
+  const userIdRef = useRef(null);
+  const dataLoadedRef = useRef(false);
+
+  const [session, setSession] = useState(null);
+  const [authView, setAuthView] = useState("signin"); // signin | signup | forgot | check-email
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState(null);
+
   const [addedCardIds, setAddedCardIds] = useState([]);
   const [benefitData, setBenefitData] = useState({});
-  const [email, setEmail] = useState(null);
-  const [emailInput, setEmailInput] = useState("");
+  const [reportEmail, setReportEmail] = useState(null);
+  const [reportEmailInput, setReportEmailInput] = useState("");
   const [emailStatus, setEmailStatus] = useState(null);
   const [activeId, setActiveId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -736,18 +747,64 @@ export default function AmexCoach() {
 
   const flash = useCallback((m) => { setToast(m); setTimeout(() => setToast(null), 2200); }, []);
 
-  useEffect(() => {
-    const s = loadState();
-    setAddedCardIds(s.addedCardIds);
-    setBenefitData(s.benefits);
-    setEmail(s.email);
-    setActiveId(s.addedCardIds[0] || null);
-    setLoading(false);
-  }, []);
-
   const saveAll = useCallback((ids, bdata, em) => {
     persist({ addedCardIds: ids, benefits: bdata, email: em });
+    if (supabase && userIdRef.current) {
+      supabase.from("card_states").upsert(
+        { user_id: userIdRef.current, added_card_ids: ids, benefit_data: bdata, email: em, updated_at: new Date().toISOString() },
+        { onConflict: "user_id" }
+      ).catch(() => {});
+    }
   }, []);
+
+  const loadUserData = useCallback(async (userId) => {
+    userIdRef.current = userId;
+    try {
+      const { data } = await supabase.from("card_states").select("*").eq("user_id", userId).single();
+      if (data) {
+        const ids = data.added_card_ids || [];
+        setAddedCardIds(ids);
+        setBenefitData(data.benefit_data || {});
+        setReportEmail(data.email || null);
+        setActiveId(ids[0] || null);
+      } else {
+        const legacy = loadState();
+        if (legacy.addedCardIds.length > 0) {
+          setAddedCardIds(legacy.addedCardIds);
+          setBenefitData(legacy.benefits);
+          setReportEmail(legacy.email);
+          setActiveId(legacy.addedCardIds[0] || null);
+          saveAll(legacy.addedCardIds, legacy.benefits, legacy.email);
+        }
+      }
+    } catch {}
+    setLoading(false);
+  }, [saveAll]);
+
+  useEffect(() => {
+    if (!supabase) { setLoading(false); return; }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session && !dataLoadedRef.current) {
+        dataLoadedRef.current = true;
+        loadUserData(session.user.id);
+      } else if (!session) {
+        setLoading(false);
+      }
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setSession(session);
+      if (session) {
+        userIdRef.current = session.user.id;
+        if (!dataLoadedRef.current) { dataLoadedRef.current = true; loadUserData(session.user.id); }
+      } else {
+        dataLoadedRef.current = false;
+        userIdRef.current = null;
+        setLoading(false);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [loadUserData]);
 
   const addedCards = CARD_LIBRARY
     .filter(c => addedCardIds.includes(c.id))
@@ -764,7 +821,7 @@ export default function AmexCoach() {
     setAddedCardIds(newIds);
     setActiveId(cardId);
     setShowPicker(false);
-    saveAll(newIds, benefitData, email);
+    saveAll(newIds, benefitData, reportEmail);
     flash("Card added!");
   };
 
@@ -779,7 +836,7 @@ export default function AmexCoach() {
     setExpandedId(null);
     setFilter("all");
     setShowAnalysis(false);
-    saveAll(newIds, newBenefits, email);
+    saveAll(newIds, newBenefits, reportEmail);
     flash("Card removed");
   };
 
@@ -789,11 +846,11 @@ export default function AmexCoach() {
     const newBenefits = card.benefits.map(b => b.id === benefitId ? { ...b, ...u } : b);
     const newBenefitData = { ...benefitData, [cardId]: newBenefits };
     setBenefitData(newBenefitData);
-    saveAll(addedCardIds, newBenefitData, email);
+    saveAll(addedCardIds, newBenefitData, reportEmail);
   };
 
   const subscribeEmail = async () => {
-    const e = emailInput.trim();
+    const e = reportEmailInput.trim();
     if (!e || !e.includes("@")) return;
     setEmailStatus("sending");
     try {
@@ -803,8 +860,8 @@ export default function AmexCoach() {
         body: JSON.stringify({ email: e }),
       });
       if (res.ok) {
-        setEmail(e);
-        setEmailInput("");
+        setReportEmail(e);
+        setReportEmailInput("");
         setEmailStatus("done");
         saveAll(addedCardIds, benefitData, e);
         flash("Subscribed! Monthly reports coming your way.");
@@ -816,7 +873,113 @@ export default function AmexCoach() {
     }
   };
 
+  const signOut = async () => {
+    if (supabase) await supabase.auth.signOut();
+    setAddedCardIds([]);
+    setBenefitData({});
+    setReportEmail(null);
+    setActiveId(null);
+    dataLoadedRef.current = false;
+  };
+
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      if (authView === "signup") {
+        const { error } = await supabase.auth.signUp({ email: authEmail, password: authPassword });
+        if (error) throw error;
+        setAuthView("check-email");
+      } else if (authView === "forgot") {
+        const { error } = await supabase.auth.resetPasswordForEmail(authEmail);
+        if (error) throw error;
+        setAuthView("check-email");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
+        if (error) throw error;
+      }
+    } catch (err) {
+      setAuthError(err.message);
+    }
+    setAuthLoading(false);
+  };
+
+  if (!supabase) {
+    return (
+      <div style={{ fontFamily: "system-ui,sans-serif", background: "#0e0e11", minHeight: "100vh", color: "#e0e0e0", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <div style={{ maxWidth: 420, width: "100%" }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: "#f0f0f0", marginBottom: 8 }}>Setup Required</div>
+          <div style={{ fontSize: 13, color: "#888", lineHeight: 1.7, marginBottom: 20 }}>
+            Add your Supabase credentials to Render environment variables to enable login and cloud sync.
+          </div>
+          {[["VITE_SUPABASE_URL", "https://xxxx.supabase.co"], ["VITE_SUPABASE_ANON_KEY", "eyJ..."]].map(([k, v]) => (
+            <div key={k} style={{ background: "#151518", borderRadius: 8, padding: "10px 12px", marginBottom: 8, border: "1px solid #1e1e23" }}>
+              <div style={{ fontSize: 10, color: "#c9a96e", fontWeight: 600, marginBottom: 3 }}>{k}</div>
+              <div style={{ fontSize: 10, color: "#555", fontFamily: "monospace" }}>{v}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   if (loading) return <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", color: "#666", background: "#0e0e11" }}>Loading...</div>;
+
+  if (!session) {
+    const isSignup = authView === "signup";
+    const isForgot = authView === "forgot";
+    const isCheckEmail = authView === "check-email";
+    return (
+      <div style={{ fontFamily: "system-ui,sans-serif", background: "#0e0e11", minHeight: "100vh", color: "#e0e0e0", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <div style={{ maxWidth: 360, width: "100%" }}>
+          <div style={{ textAlign: "center", marginBottom: 28 }}>
+            <div style={{ fontSize: 20, fontWeight: 700, color: "#f0f0f0", marginBottom: 6 }}>Credit Card Benefits Coach</div>
+            <div style={{ fontSize: 12, color: "#555" }}>{isCheckEmail ? "Check your inbox" : isSignup ? "Create an account" : isForgot ? "Reset your password" : "Sign in to your account"}</div>
+          </div>
+          {isCheckEmail ? (
+            <div style={{ background: "#151518", borderRadius: 10, border: "1px solid #1e1e23", padding: "20px", textAlign: "center" }}>
+              <div style={{ fontSize: 13, color: "#8ecf8e", marginBottom: 10 }}>Email sent!</div>
+              <div style={{ fontSize: 12, color: "#888", lineHeight: 1.6, marginBottom: 16 }}>Check your inbox at <strong style={{ color: "#e0e0e0" }}>{authEmail}</strong> and click the link to continue.</div>
+              <button onClick={() => { setAuthView("signin"); setAuthError(null); }} style={{ background: "none", border: "none", color: "#555", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}>Back to sign in</button>
+            </div>
+          ) : (
+            <form onSubmit={handleAuth} style={{ background: "#151518", borderRadius: 10, border: "1px solid #1e1e23", padding: "20px" }}>
+              {authError && <div style={{ background: "rgba(232,124,124,.08)", border: "1px solid rgba(232,124,124,.2)", borderRadius: 6, padding: "8px 10px", fontSize: 11, color: "#e87c7c", marginBottom: 12 }}>{authError}</div>}
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ fontSize: 10, color: "#666", display: "block", marginBottom: 4 }}>Email</label>
+                <input type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} required autoFocus
+                  style={{ width: "100%", background: "#0e0e11", border: "1px solid #2a2a30", borderRadius: 6, color: "#e0e0e0", padding: "9px 10px", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
+              </div>
+              {!isForgot && (
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontSize: 10, color: "#666", display: "block", marginBottom: 4 }}>Password</label>
+                  <input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} required minLength={6}
+                    style={{ width: "100%", background: "#0e0e11", border: "1px solid #2a2a30", borderRadius: 6, color: "#e0e0e0", padding: "9px 10px", fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
+                </div>
+              )}
+              <button type="submit" disabled={authLoading} style={{ width: "100%", background: "#1a3a2a", color: "#8ecf8e", border: "1px solid rgba(142,207,142,.2)", borderRadius: 7, padding: "10px", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 14 }}>
+                {authLoading ? "..." : isForgot ? "Send Reset Link" : isSignup ? "Create Account" : "Sign In"}
+              </button>
+              <div style={{ display: "flex", justifyContent: "center", gap: 12, fontSize: 11, color: "#555" }}>
+                {isSignup ? (
+                  <button type="button" onClick={() => { setAuthView("signin"); setAuthError(null); }} style={{ background: "none", border: "none", color: "#555", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}>Back to sign in</button>
+                ) : isForgot ? (
+                  <button type="button" onClick={() => { setAuthView("signin"); setAuthError(null); }} style={{ background: "none", border: "none", color: "#555", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}>Back to sign in</button>
+                ) : (
+                  <>
+                    <button type="button" onClick={() => { setAuthView("signup"); setAuthError(null); }} style={{ background: "none", border: "none", color: "#555", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}>Create account</button>
+                    <span>·</span>
+                    <button type="button" onClick={() => { setAuthView("forgot"); setAuthError(null); }} style={{ background: "none", border: "none", color: "#555", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}>Forgot password?</button>
+                  </>
+                )}
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // Empty wallet — show card library
   if (addedCards.length === 0) {
@@ -826,6 +989,7 @@ export default function AmexCoach() {
           <div style={{ textAlign: "center", marginBottom: 36 }}>
             <div style={{ fontSize: 22, fontWeight: 700, color: "#f0f0f0", marginBottom: 8 }}>Credit Card Benefits Coach</div>
             <div style={{ fontSize: 13, color: "#666", lineHeight: 1.6 }}>Add the cards you have to start tracking your benefits, credits, and ROI.</div>
+            <button onClick={signOut} style={{ marginTop: 10, background: "none", border: "none", color: "#333", fontSize: 10, cursor: "pointer", textDecoration: "underline" }}>Sign out</button>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {CARD_LIBRARY.map(card => {
@@ -902,26 +1066,29 @@ export default function AmexCoach() {
             </div>
           ))}
         </div>
-        {/* Email signup row */}
-        <div style={{ borderTop: "1px solid #1a1a1f", paddingTop: 10 }}>
-          {email ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 9, color: "#8ecf8e" }}>✓</span>
-              <span style={{ fontSize: 10, color: "#555" }}>Monthly reports → {email}</span>
-              <button onClick={() => { setEmail(null); saveAll(addedCardIds, benefitData, null); }} style={{ marginLeft: "auto", background: "none", border: "none", color: "#333", fontSize: 10, cursor: "pointer", padding: "2px 4px" }}>change</button>
-            </div>
-          ) : (
-            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <span style={{ fontSize: 10, color: "#555", whiteSpace: "nowrap" }}>Monthly reports:</span>
-              <input type="email" value={emailInput} onChange={e => { setEmailInput(e.target.value); setEmailStatus(null); }} onKeyDown={e => e.key === "Enter" && subscribeEmail()}
-                placeholder="your@email.com"
-                style={{ flex: 1, minWidth: 0, background: "#0e0e11", border: "1px solid #2a2a30", borderRadius: 5, color: "#e0e0e0", padding: "5px 8px", fontSize: 11, fontFamily: "inherit", outline: "none" }} />
-              <button onClick={subscribeEmail} disabled={emailStatus === "sending"}
-                style={{ background: "#1e2830", color: "#8ecf8e", border: "1px solid #2a3a30", borderRadius: 5, padding: "5px 10px", fontSize: 10, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
-                {emailStatus === "sending" ? "..." : emailStatus === "error" ? "Retry" : "Subscribe"}
-              </button>
-            </div>
-          )}
+        {/* Email signup + sign out row */}
+        <div style={{ borderTop: "1px solid #1a1a1f", paddingTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {reportEmail ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 9, color: "#8ecf8e" }}>✓</span>
+                <span style={{ fontSize: 10, color: "#555" }}>Reports → {reportEmail}</span>
+                <button onClick={() => { setReportEmail(null); saveAll(addedCardIds, benefitData, null); }} style={{ marginLeft: "auto", background: "none", border: "none", color: "#333", fontSize: 10, cursor: "pointer", padding: "2px 4px" }}>change</button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <span style={{ fontSize: 10, color: "#555", whiteSpace: "nowrap" }}>Monthly reports:</span>
+                <input type="email" value={reportEmailInput} onChange={e => { setReportEmailInput(e.target.value); setEmailStatus(null); }} onKeyDown={e => e.key === "Enter" && subscribeEmail()}
+                  placeholder="your@email.com"
+                  style={{ flex: 1, minWidth: 0, background: "#0e0e11", border: "1px solid #2a2a30", borderRadius: 5, color: "#e0e0e0", padding: "5px 8px", fontSize: 11, fontFamily: "inherit", outline: "none" }} />
+                <button onClick={subscribeEmail} disabled={emailStatus === "sending"}
+                  style={{ background: "#1e2830", color: "#8ecf8e", border: "1px solid #2a3a30", borderRadius: 5, padding: "5px 10px", fontSize: 10, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  {emailStatus === "sending" ? "..." : emailStatus === "error" ? "Retry" : "Subscribe"}
+                </button>
+              </div>
+            )}
+          </div>
+          <button onClick={signOut} style={{ background: "none", border: "1px solid #1e1e23", borderRadius: 5, color: "#333", fontSize: 10, cursor: "pointer", padding: "4px 8px", whiteSpace: "nowrap", flexShrink: 0 }}>Sign out</button>
         </div>
       </div>
 
@@ -1166,7 +1333,7 @@ export default function AmexCoach() {
         );
       })}
 
-      {showReport && <MonthlyReport card={activeCard} email={email} onClose={() => setShowReport(false)} />}
+      {showReport && <MonthlyReport card={activeCard} email={reportEmail} onClose={() => setShowReport(false)} />}
       {showPicker && <CardPicker available={availableCards} onAdd={addCard} onClose={() => setShowPicker(false)} />}
       {toast && <div style={{ position: "fixed", bottom: 16, left: "50%", transform: "translateX(-50%)", background: "#222", color: "#e0e0e0", padding: "6px 14px", borderRadius: 7, fontSize: 11, border: "1px solid #333", zIndex: 1100 }}>{toast}</div>}
     </div>
